@@ -1,0 +1,24 @@
+# Virtual environment
+.venv/
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# SQLite databases
+*.db
+*.sqlite3
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
