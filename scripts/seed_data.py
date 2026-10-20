@@ -97,7 +97,9 @@ class SaleRow(NamedTuple):
 def parse_start_month(start: str) -> tuple[int, int]:
     """Parse 'YYYY-MM' into (year, month). Raises ValueError if invalid."""
     # strptime alone would also accept '2026-1', so require the exact shape first.
-    if not isinstance(start, str) or not re.fullmatch(r"\d{4}-\d{2}", start):
+    # fullmatch (not match + "$", which allows a trailing "\n") and [0-9] (not \d, which
+    # matches any Unicode digit).
+    if not isinstance(start, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", start):
         raise ValueError(f"start must be in YYYY-MM format, got {start!r}")
     try:
         parsed = datetime.strptime(start, "%Y-%m")

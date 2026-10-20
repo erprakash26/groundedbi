@@ -211,7 +211,9 @@ def test_fewer_than_4_months_raises():
         generate_sales(42, "2026-01", 3)
 
 
-@pytest.mark.parametrize("start", ["2026-13", "2026-00", "2026-1", "January", ""])
+@pytest.mark.parametrize(
+    "start", ["2026-13", "2026-00", "2026-1", "January", "", "2026-01\n", "٢٠٢٦-01"]
+)
 def test_invalid_start_raises(start):
     with pytest.raises(ValueError, match="start"):
         generate_sales(42, start, 6)

@@ -7,9 +7,10 @@ response model. No SQL and no calculations here.
 import sqlite3
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import get_db
+from app.api.errors import APIError
 from app.schemas.analytics import (
     BreakdownDimension,
     BreakdownResponse,
@@ -27,13 +28,14 @@ from app.services.analytics import MAX_TOP_LIMIT, Period
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 # Anchored: pydantic matches patterns anywhere in the string unless ^ and $ are given.
-Month = Annotated[str, Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="YYYY-MM", examples=["2026-03"])]
+# [0-9], not \d: pydantic's regex engine treats \d as any Unicode digit.
+Month = Annotated[str, Query(pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$", description="YYYY-MM", examples=["2026-03"])]
 Limit = Annotated[int, Query(ge=1, le=MAX_TOP_LIMIT)]
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
 
 def _period(start: str, end: str, names: str) -> Period:
-    """Build a Period, turning its ValueError (e.g. start after end) into a 422.
+    """Build a Period, turning its ValueError (e.g. start after end) into a validation_error.
 
     Only this constructor is wrapped: a ValueError from anywhere else is our bug and
     should surface as a 500, not be disguised as a client error.
@@ -41,7 +43,12 @@ def _period(start: str, end: str, names: str) -> Period:
     try:
         return Period(start, end)
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid period ({names}): {exc}") from exc
+        raise APIError(
+            422,
+            "validation_error",
+            f"Invalid period ({names}): {exc}",
+            details=[{"location": "query", "field": names, "message": str(exc), "type": "period_order"}],
+        ) from exc
 
 
 def _echo(period: Period) -> PeriodOut:

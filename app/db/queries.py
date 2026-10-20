@@ -16,7 +16,9 @@ import re
 import sqlite3
 from dataclasses import dataclass
 
-_MONTH_PATTERN = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
+# [0-9], not \d: in Python \d also matches non-ASCII digits such as Arabic-Indic "٢٠٢٦".
+# Always used with fullmatch: "$" in re.match/re.search would also accept a trailing "\n".
+_MONTH_PATTERN = re.compile(r"[0-9]{4}-(0[1-9]|1[0-2])")
 MAX_TOP_LIMIT = 20
 
 

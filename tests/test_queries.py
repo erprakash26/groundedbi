@@ -47,6 +47,8 @@ def test_period_date_bounds_are_half_open():
         ("2026-01-01", "2026-02"),
         (None, "2026-02"),
         ("2026-03", "2026-02"),  # start after end
+        ("2026-01\n", "2026-02"),  # trailing newline
+        ("٢٠٢٦-01", "2026-02"),  # Arabic-Indic digits for 2026
     ],
 )
 def test_invalid_period_raises(start, end):

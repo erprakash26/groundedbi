@@ -1,7 +1,32 @@
+import io
+import json
+import logging
+
 import pytest
 
 from app.db.connection import get_connection
+from app.observability.logging import JsonFormatter
 from scripts.seed_data import SCHEMA_PATH, seed_database
+
+
+@pytest.fixture
+def log_lines():
+    """Capture log output exactly as production formats it; call the fixture to get parsed lines."""
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    root = logging.getLogger()
+    old_level = root.level
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+    def parsed() -> list[dict]:
+        # json.loads on every line also proves each line is one valid JSON object.
+        return [json.loads(line) for line in stream.getvalue().splitlines()]
+
+    yield parsed
+    root.removeHandler(handler)
+    root.setLevel(old_level)
 
 
 @pytest.fixture(scope="module")

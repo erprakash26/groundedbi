@@ -158,6 +158,8 @@ INJECTION = "2026-01'; DROP TABLE sales; --"
         ("/analytics/revenue-by-month", {"start": "2026-1", "end": "2026-02"}),
         ("/analytics/revenue-by-month", {"start": "2026-01"}),  # missing end
         ("/analytics/revenue-by-month", {"start": INJECTION, "end": "2026-02"}),
+        ("/analytics/revenue-by-month", {"start": "2026-01\n", "end": "2026-02"}),  # trailing newline
+        ("/analytics/revenue-by-month", {"start": "٢٠٢٦-01", "end": "2026-02"}),  # non-ASCII digits
         ("/analytics/breakdown", {**FIRST_HALF, "dimension": "store"}),
         ("/analytics/breakdown", {**FIRST_HALF, "dimension": "product_region"}),  # change-only dimension
         ("/analytics/breakdown", {**FIRST_HALF, "dimension": "region; DROP TABLE sales"}),
@@ -183,7 +185,9 @@ def test_invalid_query_parameters_return_422(client, path, params):
 def test_start_after_end_returns_422_naming_the_period(client, path, params, names):
     response = client.get(path, params=params)
     assert response.status_code == 422
-    assert names in response.json()["detail"] and "after" in response.json()["detail"]
+    error = response.json()["error"]
+    assert error["code"] == "validation_error"
+    assert names in error["message"] and "after" in error["message"]
 
 
 def test_injection_attempts_leave_data_intact(client, conn):
@@ -206,7 +210,8 @@ def test_missing_database_returns_503_with_seed_hint_and_creates_nothing(make_cl
     missing = tmp_path / "missing.db"
     response = make_client(missing).get("/analytics/meta")
     assert response.status_code == 503
-    assert "python -m scripts.seed_data" in response.json()["detail"]
+    assert response.json()["error"]["code"] == "database_unavailable"
+    assert "python -m scripts.seed_data" in response.json()["error"]["message"]
     assert not missing.exists()
 
 
