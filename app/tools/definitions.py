@@ -16,12 +16,11 @@ Argument models:
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
-from itertools import chain, islice
 from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
-from app.services import analytics, metrics
+from app.services import analytics, coverage, metrics
 from app.services.analytics import BREAKDOWN_DIMENSIONS, CHANGE_DIMENSIONS, MAX_TOP_LIMIT, Period
 from app.tools.results import format_pct, format_pct_abs, with_display
 
@@ -29,8 +28,6 @@ from app.tools.results import format_pct, format_pct_abs, with_display
 # Pydantic's own `pattern` searches the string instead of matching the whole of it.
 _MONTH_SCHEMA_PATTERN = "^[0-9]{4}-(0[1-9]|1[0-2])$"
 DEFAULT_LIMIT = 5
-# A long period far outside the data could list thousands of months; the count covers the rest.
-MAX_LISTED_UNCOVERED_MONTHS = 24
 
 
 def _check_month(value: str) -> str:
@@ -125,47 +122,26 @@ class GetTopProductsArguments(SinglePeriodArguments):
 
 
 # --- data coverage ---------------------------------------------------------
-
-
-def _month_index(month: str) -> int:
-    return int(month[:4]) * 12 + int(month[5:7]) - 1
-
-
-def _month_name(index: int) -> str:
-    year, month0 = divmod(index, 12)
-    return f"{year:04d}-{month0 + 1:02d}"
+# The logic lives in app/services/coverage.py (shared with the /analytics API). The tools keep
+# their compact format: uncovered months only when there are any, the count only when the list
+# was cut short.
 
 
 def _data_coverage(conn: sqlite3.Connection) -> dict[str, str] | None:
-    """First and last month that have sales, or None for an empty database."""
-    date_range = analytics.data_date_range(conn)
-    if date_range is None:
-        return None
-    return {"first_month": date_range.first_date[:7], "last_month": date_range.last_date[:7]}
+    data_range = coverage.data_coverage(conn)
+    return None if data_range is None else {"first_month": data_range.first_month, "last_month": data_range.last_month}
 
 
 def _coverage_fields(
-    period: Period, coverage: dict[str, str] | None, flag_key: str, months_key: str
+    period: Period, data_range: dict[str, str] | None, flag_key: str, months_key: str
 ) -> dict[str, Any]:
-    """Is every requested month inside the data's coverage? Computed here so the LLM never has to.
-
-    "Uncovered" means outside the first..last month of the data. The seeded data has sales
-    in every month of that range, so here this is the same as "has no sales".
-    """
-    start, end = _month_index(period.start_month), _month_index(period.end_month)
-    if coverage is None:
-        uncovered = [range(start, end + 1)]
-    else:
-        first, last = _month_index(coverage["first_month"]), _month_index(coverage["last_month"])
-        # Coverage is one contiguous block, so uncovered months are at most a run before it and a run after it.
-        uncovered = [range(start, min(end, first - 1) + 1), range(max(start, last + 1), end + 1)]
-    count = sum(len(run) for run in uncovered)
-    fields: dict[str, Any] = {flag_key: count == 0}
-    if count:
-        listed = islice(chain.from_iterable(uncovered), MAX_LISTED_UNCOVERED_MONTHS)
-        fields[months_key] = [_month_name(index) for index in listed]
-        if count > MAX_LISTED_UNCOVERED_MONTHS:
-            fields[months_key.removesuffix("months") + "month_count"] = count
+    data = None if data_range is None else coverage.DataCoverage(**data_range)
+    result = coverage.period_coverage(period, data)
+    fields: dict[str, Any] = {flag_key: result.fully_covered}
+    if not result.fully_covered:
+        fields[months_key] = result.uncovered_months
+        if result.uncovered_month_count > len(result.uncovered_months):
+            fields[months_key.removesuffix("months") + "month_count"] = result.uncovered_month_count
     return fields
 
 
@@ -174,22 +150,22 @@ def _period_out(period: Period) -> dict[str, str]:
 
 
 def _single_period_header(conn: sqlite3.Connection, period: Period) -> dict[str, Any]:
-    coverage = _data_coverage(conn)
+    data_range = _data_coverage(conn)
     return {
         "period": _period_out(period),
-        "data_coverage": coverage,
-        **_coverage_fields(period, coverage, "period_fully_covered", "uncovered_months"),
+        "data_coverage": data_range,
+        **_coverage_fields(period, data_range, "period_fully_covered", "uncovered_months"),
     }
 
 
 def _two_period_header(conn: sqlite3.Connection, period_a: Period, period_b: Period) -> dict[str, Any]:
-    coverage = _data_coverage(conn)
+    data_range = _data_coverage(conn)
     return {
         "period_a": _period_out(period_a),
         "period_b": _period_out(period_b),
-        "data_coverage": coverage,
-        **_coverage_fields(period_a, coverage, "period_a_fully_covered", "period_a_uncovered_months"),
-        **_coverage_fields(period_b, coverage, "period_b_fully_covered", "period_b_uncovered_months"),
+        "data_coverage": data_range,
+        **_coverage_fields(period_a, data_range, "period_a_fully_covered", "period_a_uncovered_months"),
+        **_coverage_fields(period_b, data_range, "period_b_fully_covered", "period_b_uncovered_months"),
     }
 
 

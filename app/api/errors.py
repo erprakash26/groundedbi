@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.observability.middleware import REQUEST_ID_HEADER
+from app.schemas.errors import ErrorResponse
 
 logger = logging.getLogger("app.errors")
 
@@ -24,6 +25,14 @@ logger = logging.getLogger("app.errors")
 # like an ordinary identifier; same rule as the tool executor (app/tools/executor.py).
 _SAFE_FIELD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,63}")
 UNRECOGNIZED_FIELD = "<unrecognized field>"
+
+# For OpenAPI: the envelope our handlers really return. Documenting 422 on a route also stops
+# FastAPI from adding its default 422 ({"detail": [...]} with "input"), which we never send.
+VALIDATION_ERROR_RESPONSE = {422: {"model": ErrorResponse, "description": "Validation error (input is never echoed)"}}
+INTERNAL_ERROR_RESPONSE = {500: {"model": ErrorResponse, "description": "Internal error (generic message)"}}
+DATABASE_ERROR_RESPONSE = {503: {"model": ErrorResponse, "description": "Database missing or not seeded"}}
+# Routes that take input and read the database.
+ERROR_RESPONSES = {**VALIDATION_ERROR_RESPONSE, **INTERNAL_ERROR_RESPONSE, **DATABASE_ERROR_RESPONSE}
 
 # Codes for Starlette's own HTTP errors (e.g. the router's 404/405). Our code raises APIError instead.
 _HTTP_CODES = {404: "not_found", 405: "method_not_allowed"}

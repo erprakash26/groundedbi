@@ -6,6 +6,10 @@ Units:
     JSON string, so clients receive "-17.2" (not the float -17.2). Strings keep the exact
     value the server computed; a JSON float could arrive as -17.199999999999999.
     A percentage is null when it is undefined (no baseline, or zero total change).
+
+Coverage: every response for a period says which requested months have no data, computed
+by app/services/coverage.py (the same logic the LLM tools use). uncovered_months lists at
+most 24 months; uncovered_month_count always gives the full number.
 """
 
 from decimal import Decimal
@@ -29,6 +33,31 @@ class PeriodOut(BaseModel):
     end: str  # YYYY-MM, inclusive
 
 
+class DataCoverageOut(RowModel):
+    first_month: str  # YYYY-MM, first month with sales
+    last_month: str  # YYYY-MM, last month with sales
+
+
+class SinglePeriodResponse(BaseModel):
+    period: PeriodOut
+    data_coverage: DataCoverageOut | None  # null if there are no sales at all
+    period_fully_covered: bool
+    uncovered_months: list[str]  # requested months outside the data, at most 24; [] if fully covered
+    uncovered_month_count: int  # all uncovered months, including any not listed
+
+
+class TwoPeriodResponse(BaseModel):
+    period_a: PeriodOut
+    period_b: PeriodOut
+    data_coverage: DataCoverageOut | None
+    period_a_fully_covered: bool
+    period_a_uncovered_months: list[str]
+    period_a_uncovered_month_count: int
+    period_b_fully_covered: bool
+    period_b_uncovered_months: list[str]
+    period_b_uncovered_month_count: int
+
+
 class MetaResponse(BaseModel):
     first_date: str | None  # YYYY-MM-DD; null if there are no sales
     last_date: str | None
@@ -43,8 +72,7 @@ class MonthRevenueRow(RowModel):
     orders: int
 
 
-class RevenueByMonthResponse(BaseModel):
-    period: PeriodOut
+class RevenueByMonthResponse(SinglePeriodResponse):
     rows: list[MonthRevenueRow]
 
 
@@ -54,20 +82,16 @@ class BreakdownRowOut(RowModel):
     units: int
 
 
-class BreakdownResponse(BaseModel):
-    period: PeriodOut
+class BreakdownResponse(SinglePeriodResponse):
     dimension: BreakdownDimension
     rows: list[BreakdownRowOut]
 
 
-class TopProductsResponse(BaseModel):
-    period: PeriodOut
+class TopProductsResponse(SinglePeriodResponse):
     rows: list[BreakdownRowOut]
 
 
-class CompareResponse(BaseModel):
-    period_a: PeriodOut
-    period_b: PeriodOut
+class CompareResponse(TwoPeriodResponse):
     revenue_a_cents: int
     revenue_b_cents: int
     change_cents: int  # revenue_b_cents - revenue_a_cents
@@ -82,8 +106,6 @@ class DriverRow(RowModel):
     share_of_total_change: Decimal | None  # "71.6" means 71.6% of the total change; null if it is 0
 
 
-class DriversResponse(BaseModel):
-    period_a: PeriodOut
-    period_b: PeriodOut
+class DriversResponse(TwoPeriodResponse):
     dimension: ChangeDimension
     rows: list[DriverRow]

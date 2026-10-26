@@ -18,12 +18,12 @@ from fastapi import APIRouter, Body, Depends, Request
 from fastapi.openapi.models import Example
 
 from app.api.deps import get_db, get_provider
-from app.api.errors import APIError
+from app.api.errors import ERROR_RESPONSES, APIError
 from app.llm import Provider
 from app.schemas.ask import AskRequest, AskResponse, EvidenceOut, GroundingSummary, TraceEntry, UsageOut
 from app.services.orchestrator import run_question
 
-router = APIRouter(tags=["ask"])
+router = APIRouter(tags=["ask"], responses=ERROR_RESPONSES)
 
 # Shown as a dropdown in /docs, ready for "Try it out".
 _EXAMPLES = {

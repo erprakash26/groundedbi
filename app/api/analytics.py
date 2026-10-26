@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.api.deps import get_db
-from app.api.errors import APIError
+from app.api.errors import DATABASE_ERROR_RESPONSE, INTERNAL_ERROR_RESPONSE, VALIDATION_ERROR_RESPONSE, APIError
 from app.schemas.analytics import (
     BreakdownDimension,
     BreakdownResponse,
@@ -22,10 +22,13 @@ from app.schemas.analytics import (
     RevenueByMonthResponse,
     TopProductsResponse,
 )
-from app.services import analytics
+from app.services import analytics, coverage
 from app.services.analytics import MAX_TOP_LIMIT, Period
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+# Every route reads the database; 422 is added only to routes that take query parameters.
+router = APIRouter(
+    prefix="/analytics", tags=["analytics"], responses={**INTERNAL_ERROR_RESPONSE, **DATABASE_ERROR_RESPONSE}
+)
 
 # Anchored: pydantic matches patterns anywhere in the string unless ^ and $ are given.
 # [0-9], not \d: pydantic's regex engine treats \d as any Unicode digit.
@@ -55,6 +58,30 @@ def _echo(period: Period) -> PeriodOut:
     return PeriodOut(start=period.start_month, end=period.end_month)
 
 
+def _single_period_fields(conn: sqlite3.Connection, period: Period) -> dict:
+    """period, data_coverage and the coverage fields shared by every single-period response."""
+    data = coverage.data_coverage(conn)
+    result = coverage.period_coverage(period, data)
+    return {
+        "period": _echo(period),
+        "data_coverage": data,
+        "period_fully_covered": result.fully_covered,
+        "uncovered_months": result.uncovered_months,
+        "uncovered_month_count": result.uncovered_month_count,
+    }
+
+
+def _two_period_fields(conn: sqlite3.Connection, period_a: Period, period_b: Period) -> dict:
+    data = coverage.data_coverage(conn)
+    fields: dict = {"period_a": _echo(period_a), "period_b": _echo(period_b), "data_coverage": data}
+    for prefix, period in (("period_a", period_a), ("period_b", period_b)):
+        result = coverage.period_coverage(period, data)
+        fields[f"{prefix}_fully_covered"] = result.fully_covered
+        fields[f"{prefix}_uncovered_months"] = result.uncovered_months
+        fields[f"{prefix}_uncovered_month_count"] = result.uncovered_month_count
+    return fields
+
+
 @router.get("/meta", response_model=MetaResponse)
 def meta(conn: Db) -> MetaResponse:
     """Date range of the data and the available products and regions."""
@@ -67,27 +94,26 @@ def meta(conn: Db) -> MetaResponse:
     )
 
 
-@router.get("/revenue-by-month", response_model=RevenueByMonthResponse)
+@router.get("/revenue-by-month", response_model=RevenueByMonthResponse, responses=VALIDATION_ERROR_RESPONSE)
 def revenue_by_month(conn: Db, start: Month, end: Month) -> RevenueByMonthResponse:
     period = _period(start, end, "start..end")
-    return RevenueByMonthResponse(period=_echo(period), rows=analytics.revenue_by_month(conn, period))
+    return RevenueByMonthResponse(**_single_period_fields(conn, period), rows=analytics.revenue_by_month(conn, period))
 
 
-@router.get("/breakdown", response_model=BreakdownResponse)
+@router.get("/breakdown", response_model=BreakdownResponse, responses=VALIDATION_ERROR_RESPONSE)
 def breakdown(conn: Db, start: Month, end: Month, dimension: BreakdownDimension) -> BreakdownResponse:
     period = _period(start, end, "start..end")
     rows = analytics.revenue_breakdown(conn, period, dimension)
-    return BreakdownResponse(period=_echo(period), dimension=dimension, rows=rows)
+    return BreakdownResponse(**_single_period_fields(conn, period), dimension=dimension, rows=rows)
 
 
-@router.get("/compare", response_model=CompareResponse)
+@router.get("/compare", response_model=CompareResponse, responses=VALIDATION_ERROR_RESPONSE)
 def compare(conn: Db, a_start: Month, a_end: Month, b_start: Month, b_end: Month) -> CompareResponse:
     period_a = _period(a_start, a_end, "a_start..a_end")
     period_b = _period(b_start, b_end, "b_start..b_end")
     result = analytics.compare_periods(conn, period_a, period_b)
     return CompareResponse(
-        period_a=_echo(period_a),
-        period_b=_echo(period_b),
+        **_two_period_fields(conn, period_a, period_b),
         revenue_a_cents=result.revenue_a_cents,
         revenue_b_cents=result.revenue_b_cents,
         change_cents=result.change_cents,
@@ -95,7 +121,7 @@ def compare(conn: Db, a_start: Month, a_end: Month, b_start: Month, b_end: Month
     )
 
 
-@router.get("/drivers", response_model=DriversResponse)
+@router.get("/drivers", response_model=DriversResponse, responses=VALIDATION_ERROR_RESPONSE)
 def drivers(
     conn: Db,
     a_start: Month,
@@ -109,10 +135,11 @@ def drivers(
     period_a = _period(a_start, a_end, "a_start..a_end")
     period_b = _period(b_start, b_end, "b_start..b_end")
     rows = analytics.change_drivers(conn, period_a, period_b, dimension, limit=limit)
-    return DriversResponse(period_a=_echo(period_a), period_b=_echo(period_b), dimension=dimension, rows=rows)
+    return DriversResponse(**_two_period_fields(conn, period_a, period_b), dimension=dimension, rows=rows)
 
 
-@router.get("/top-products", response_model=TopProductsResponse)
+@router.get("/top-products", response_model=TopProductsResponse, responses=VALIDATION_ERROR_RESPONSE)
 def top_products(conn: Db, start: Month, end: Month, limit: Limit = 5) -> TopProductsResponse:
     period = _period(start, end, "start..end")
-    return TopProductsResponse(period=_echo(period), rows=analytics.top_products(conn, period, limit))
+    rows = analytics.top_products(conn, period, limit)
+    return TopProductsResponse(**_single_period_fields(conn, period), rows=rows)

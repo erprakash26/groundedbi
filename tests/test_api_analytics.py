@@ -234,3 +234,57 @@ def test_post_to_analytics_endpoint_returns_405(client):
 
 def test_health_still_ok(client):
     assert client.get("/health").json() == {"status": "ok"}
+
+
+# --- data coverage ---
+
+
+def test_revenue_by_month_reports_uncovered_months(client):
+    response = client.get("/analytics/revenue-by-month", params={"start": "2025-01", "end": "2026-10"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data_coverage"] == {"first_month": "2026-01", "last_month": "2026-06"}
+    assert body["period_fully_covered"] is False
+    expected = [f"2025-{m:02d}" for m in range(1, 13)] + ["2026-07", "2026-08", "2026-09", "2026-10"]
+    assert body["uncovered_months"] == expected
+    assert body["uncovered_month_count"] == 16
+    assert [row["month"] for row in body["rows"]] == [f"2026-0{m}" for m in range(1, 7)]
+
+
+def test_fully_covered_period_has_empty_uncovered_list(client):
+    body = client.get("/analytics/revenue-by-month", params=FIRST_HALF).json()
+    assert body["period_fully_covered"] is True
+    assert body["uncovered_months"] == [] and body["uncovered_month_count"] == 0
+
+
+def test_uncovered_list_is_capped_with_full_count(client):
+    body = client.get("/analytics/revenue-by-month", params={"start": "2000-01", "end": "2026-06"}).json()
+    assert len(body["uncovered_months"]) == 24
+    assert body["uncovered_month_count"] == 26 * 12
+
+
+@pytest.mark.parametrize(
+    ("path", "extra"),
+    [("/analytics/breakdown", {"dimension": "region"}), ("/analytics/top-products", {})],
+)
+def test_other_single_period_endpoints_report_coverage(client, path, extra):
+    body = client.get(path, params={"start": "2030-01", "end": "2030-02", **extra}).json()
+    assert body["rows"] == []
+    assert body["period_fully_covered"] is False
+    assert body["uncovered_months"] == ["2030-01", "2030-02"]
+
+
+@pytest.mark.parametrize(("path", "extra"), [("/analytics/compare", {}), ("/analytics/drivers", {"dimension": "region"})])
+def test_two_period_endpoints_report_coverage_per_period(client, path, extra):
+    params = {"a_start": "2026-05", "a_end": "2026-06", "b_start": "2026-06", "b_end": "2026-08", **extra}
+    body = client.get(path, params=params).json()
+    assert body["data_coverage"] == {"first_month": "2026-01", "last_month": "2026-06"}
+    assert body["period_a_fully_covered"] is True
+    assert body["period_a_uncovered_months"] == [] and body["period_a_uncovered_month_count"] == 0
+    assert body["period_b_fully_covered"] is False
+    assert body["period_b_uncovered_months"] == ["2026-07", "2026-08"]
+    assert body["period_b_uncovered_month_count"] == 2
+
+
+def test_meta_has_no_coverage_fields(client):
+    assert "period_fully_covered" not in client.get("/analytics/meta").json()

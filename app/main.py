@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api import analytics, ask
-from app.api.errors import register_error_handlers
+from app.api.errors import INTERNAL_ERROR_RESPONSE, register_error_handlers
 from app.observability.logging import configure_logging
 from app.observability.middleware import RequestContextMiddleware
 
@@ -23,7 +23,8 @@ def create_app() -> FastAPI:
     app.include_router(analytics.router)
     app.include_router(ask.router)
 
-    @app.get("/health")
+    # No input and no database: only a 500 is possible besides 200.
+    @app.get("/health", responses=INTERNAL_ERROR_RESPONSE)
     def health() -> dict[str, str]:
         """Liveness check: returns 200 if the process is up and serving requests."""
         return {"status": "ok"}
