@@ -187,7 +187,17 @@ def test_validate_questions_rejects_missing_fields_and_duplicate_ids():
         validate_questions([make_question(), make_question()])
 
 
-def test_both_question_files_are_valid():
+def test_split_choices_come_from_datasets_json(capsys):
+    # An unknown split fails during argument parsing, before anything runs; the error lists
+    # every registered split, so a new dataset never needs a code change to be selectable.
+    with pytest.raises(SystemExit):
+        run_evals.main(["--split", "no_such_split"])
+    error = capsys.readouterr().err
+    for split in [*run_evals.DATASETS, "all"]:
+        assert f"'{split}'" in error
+
+
+def test_all_registered_question_files_are_valid():
     for path in run_evals.QUESTION_FILES.values():
         run_evals.load_questions(path)
 

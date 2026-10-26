@@ -320,7 +320,7 @@ _TOOL_LIST = [
             "Revenue and units per product, region or category over a period, largest first."
             " Use it to see how revenue is split within one period."
             ' Example questions: "Which region had the most revenue in Q1 2026?",'
-            ' "Revenue by category in May 2026?"' + _COVERAGE_NOTE + _MONEY_NOTE
+            ' "How was May 2026 revenue split across categories?"' + _COVERAGE_NOTE + _MONEY_NOTE
         ),
         arguments_model=GetRevenueBreakdownArguments,
         handler=_get_revenue_breakdown,

@@ -1,6 +1,6 @@
 """Run the evaluation questions through the planner and orchestrator and report metrics.
 
-    python -m evals.run_evals [--split dev|heldout|all] [--fail-under RATE]
+    python -m evals.run_evals [--split <name from evals/datasets.json>|all] [--fail-under RATE]
 
 Seeds a fresh database in a temp folder (seed 42, default range), opens it read-only and calls
 run_question with RuleBasedProvider directly, so the eval measures planning, tools and
@@ -273,7 +273,8 @@ def run(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--split", choices=["dev", "heldout", "all"], default="all")
+    # Any split registered in evals/datasets.json, or "all".
+    parser.add_argument("--split", choices=[*DATASETS, "all"], default="all")
     parser.add_argument("--fail-under", type=float, default=None, metavar="RATE",
                         help="exit 1 if the dev pass rate is below RATE (0-1); held-out is never gated")
     args = parser.parse_args(argv)
