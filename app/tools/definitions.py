@@ -21,9 +21,9 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
-from app.services import analytics
+from app.services import analytics, metrics
 from app.services.analytics import BREAKDOWN_DIMENSIONS, CHANGE_DIMENSIONS, MAX_TOP_LIMIT, Period
-from app.tools.results import format_pct, with_display
+from app.tools.results import format_pct, format_pct_abs, with_display
 
 # Only for the JSON schema the LLM reads. Validation is done by _check_month, because
 # Pydantic's own `pattern` searches the string instead of matching the whole of it.
@@ -247,6 +247,7 @@ def _compare_periods(conn: sqlite3.Connection, args: ComparePeriodsArguments) ->
             }
         ),
         "pct_change": format_pct(comparison.pct_change),
+        "pct_change_abs": format_pct_abs(comparison.pct_change),
     }
 
 
@@ -254,10 +255,18 @@ def _get_change_drivers(conn: sqlite3.Connection, args: GetChangeDriversArgument
     period_a, period_b = args.period_a(), args.period_b()
     # All drivers, truncated here: their sum is the total change, which the shares are relative to.
     drivers = analytics.change_drivers(conn, period_a, period_b, args.dimension)
+    # Every sale has a product and a region, so summing all labels gives the period totals.
+    total_a = sum(d.revenue_a_cents for d in drivers)
+    total_b = sum(d.revenue_b_cents for d in drivers)
+    pct_change = metrics.pct_change(total_a, total_b)
     return {
         **_two_period_header(conn, period_a, period_b),
         "dimension": args.dimension,
-        **with_display({"total_change_cents": sum(d.change_cents for d in drivers)}),
+        **with_display(
+            {"total_revenue_a_cents": total_a, "total_revenue_b_cents": total_b, "total_change_cents": total_b - total_a}
+        ),
+        "pct_change": format_pct(pct_change),
+        "pct_change_abs": format_pct_abs(pct_change),
         "driver_count": len(drivers),
         "rows": [
             {
@@ -297,7 +306,10 @@ _COVERAGE_NOTE = (
     " The result includes data_coverage (first and last month with data) and whether the requested"
     " period is fully covered; if it is not, say which months have no data instead of guessing."
 )
-_MONEY_NOTE = " Quote money from the *_display fields exactly as written."
+_MONEY_NOTE = (
+    " Quote money from the *_display or *_abs_display fields and percentages from the pct/share"
+    " fields exactly as written; never compute or reformat a number."
+)
 
 _TOOL_LIST = [
     Tool(
@@ -347,7 +359,8 @@ _TOOL_LIST = [
     Tool(
         name="get_change_drivers",
         description=(
-            "Explains a revenue change between period A and period B: which products, regions,"
+            "Explains a revenue change between period A and period B: the total revenue of each"
+            " period, the total change and its percentage, and which products, regions,"
             " categories or product/region pairs moved the most, largest absolute change first."
             " share_of_total_change is a percentage of the total change across ALL labels (not just"
             " the rows returned); it is negative for a label that moved against the total and can"

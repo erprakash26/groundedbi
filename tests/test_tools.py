@@ -7,7 +7,7 @@ from app.db.connection import get_connection
 from app.services import analytics
 from app.services.analytics import BREAKDOWN_DIMENSIONS, CHANGE_DIMENSIONS, MAX_TOP_LIMIT, Period
 from app.tools import TOOLS, ToolResult, execute_tool, tool_definitions
-from app.tools.results import format_cents
+from app.tools.results import format_cents, with_display
 from scripts.seed_data import seed_database
 
 FEB_VS_MAR = {
@@ -68,16 +68,33 @@ def run_error(conn, name, arguments, code: str) -> ToolResult:
 @pytest.mark.parametrize(
     ("cents", "expected"),
     [
-        (0, "$0.00"),
-        (5, "$0.05"),
-        (-5, "-$0.05"),
-        (199, "$1.99"),
-        (-22491000, "-$224,910.00"),
-        (123456789, "$1,234,567.89"),
+        (0, "$0"),
+        (49, "$0"),
+        (50, "$1"),  # half rounds up
+        (149, "$1"),
+        (150, "$2"),
+        (-49, "$0"),  # rounds to zero: never "-$0"
+        (-50, "-$1"),  # rounding is symmetric around zero
+        (-150, "-$2"),
+        (-22491000, "-$224,910"),
+        (123456789, "$1,234,568"),
+        (99999950, "$1,000,000"),  # rounding carries into a new thousands group
     ],
 )
-def test_format_cents(cents, expected):
+def test_format_cents_whole_dollars_half_up(cents, expected):
     assert format_cents(cents) == expected
+
+
+def test_with_display_adds_abs_display_only_for_signed_changes():
+    row = with_display({"label": "x", "revenue_cents": 150, "change_cents": -22491000})
+    assert row == {
+        "label": "x",
+        "revenue_cents": 150,
+        "revenue_display": "$2",
+        "change_cents": -22491000,
+        "change_display": "-$224,910",
+        "change_abs_display": "$224,910",
+    }
 
 
 # --- each tool returns correct data ----------------------------------------
@@ -115,8 +132,10 @@ def test_get_revenue_breakdown_by_region_matches_service(conn):
 def test_compare_periods_feb_vs_mar(conn):
     data = run_ok(conn, "compare_periods", FEB_VS_MAR)
     assert data["pct_change"] == "-17.2"
+    assert data["pct_change_abs"] == "17.2"
     assert data["change_cents"] == data["revenue_b_cents"] - data["revenue_a_cents"] == -31403200
-    assert data["change_display"] == "-$314,032.00"
+    assert data["change_display"] == "-$314,032"
+    assert data["change_abs_display"] == "$314,032"
     assert data["revenue_a_display"] == format_cents(data["revenue_a_cents"])
 
 
@@ -126,11 +145,22 @@ def test_get_change_drivers_feb_vs_mar_by_product_region(conn):
     first = data["rows"][0]
     assert first["label"] == "StudioBook 16 / West"
     assert first["share_of_total_change"] == "71.6"
-    assert first["change_cents"] == -22491000
-    assert first["change_display"] == "-$224,910.00"
-    # The total covers ALL labels, not just the 3 returned; shares are relative to it.
+    assert first["change_cents"] == -22491000  # exact cents are kept
+    assert first["change_display"] == "-$224,910"
+    assert first["change_abs_display"] == "$224,910"
+    # The totals cover ALL labels, not just the 3 returned; shares are relative to them.
     assert data["total_change_cents"] == -31403200
+    assert data["total_change_abs_display"] == "$314,032"
     assert data["driver_count"] == 32
+
+
+def test_get_change_drivers_totals_match_compare_periods(conn):
+    drivers = run_ok(conn, "get_change_drivers", {**FEB_VS_MAR, "dimension": "region"})
+    compare = run_ok(conn, "compare_periods", FEB_VS_MAR)
+    assert drivers["total_revenue_a_cents"] == compare["revenue_a_cents"]
+    assert drivers["total_revenue_b_cents"] == compare["revenue_b_cents"]
+    assert drivers["total_revenue_a_display"] == compare["revenue_a_display"] == "$1,825,822"
+    assert (drivers["pct_change"], drivers["pct_change_abs"]) == ("-17.2", "17.2")
 
 
 def test_get_change_drivers_default_limit_is_5(conn):

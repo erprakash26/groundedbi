@@ -55,11 +55,12 @@ class ToolCalls:
 @dataclass(frozen=True)
 class FinalAnswer:
     text: str
+    out_of_scope: bool = False  # True: a polite refusal (the data can never answer this question)
 
 
 @dataclass(frozen=True)
 class Clarify:
-    question: str  # asked back to the user when the question is ambiguous (used from task 3)
+    question: str  # asked back to the user when a different period or name would make it answerable
 
 
 Turn = ToolCalls | FinalAnswer | Clarify

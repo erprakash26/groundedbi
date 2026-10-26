@@ -3,6 +3,9 @@
   question -> provider.next_turn -> ToolCalls? execute each via execute_tool, append results, repeat
                                  -> FinalAnswer / Clarify? stop
 
+Every FinalAnswer goes through the grounding check (app/services/grounding.py) before it is
+returned: an answer with a number that cannot be traced to this run's tool output is withheld.
+
 Every limit is checked BEFORE acting, so a stopped run never half-executes a step:
   - no provider turn is started once max_steps turns have been made or the deadline has passed;
   - a turn that comes back after the deadline is discarded;
@@ -10,8 +13,10 @@ Every limit is checked BEFORE acting, so a stopped run never half-executes a ste
 A stopped run never gets a made-up answer: answer is None and message says why.
 
 Statuses:
-  answered                  the provider gave a final answer
-  clarification_needed      the provider asked the user a question back (task 3)
+  answered                  the provider gave a final answer and it passed the grounding check
+  out_of_scope              the provider politely refused: the data can never answer this question
+  clarification_needed      the provider asked the user a question back
+  grounding_failed          the final answer had numbers not found in the tool output; it is withheld
   limit_exceeded            max_steps or the deadline was reached
   tool_call_limit_exceeded  the provider asked for a batch of tool calls that would exceed max_tool_calls
   provider_error            the provider raised, or returned something that is not a valid turn
@@ -40,6 +45,7 @@ from app.llm.base import (
     UserMessage,
     estimate_cost_usd,
 )
+from app.services.grounding import check_grounding
 from app.tools import execute_tool, tool_definitions
 
 logger = logging.getLogger("app.orchestrator")
@@ -50,7 +56,14 @@ LOGGED_QUESTION_LENGTH = 200
 TOOL_TIME_BUDGET_SECONDS = 2.0
 
 Status = Literal[
-    "answered", "clarification_needed", "limit_exceeded", "tool_call_limit_exceeded", "provider_error", "error"
+    "answered",
+    "out_of_scope",
+    "clarification_needed",
+    "grounding_failed",
+    "limit_exceeded",
+    "tool_call_limit_exceeded",
+    "provider_error",
+    "error",
 ]
 
 
@@ -69,11 +82,18 @@ class UsageOut(BaseModel):
     estimated_cost_usd: float
 
 
+class GroundingOut(BaseModel):
+    passed: bool
+    numbers_checked: int
+    unsupported: list[str]  # numbers in the withheld answer that no tool result contains
+
+
 class AskResult(BaseModel):
     status: Status
     answer: str | None
     clarifying_question: str | None
-    message: str | None  # why there is no answer (limits, errors); None when answered
+    message: str | None  # why there is no answer (limits, errors, failed grounding); None when answered
+    grounding: GroundingOut | None  # set whenever the provider gave a final answer
     tool_calls: list[ToolCallTrace]
     steps: int  # provider turns made
     usage: UsageOut
@@ -87,6 +107,7 @@ class _Run:
     steps: int = 0
     traces: list[ToolCallTrace] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
+    grounding: GroundingOut | None = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +167,7 @@ def run_question(
         answer=outcome.answer,
         clarifying_question=outcome.clarifying_question,
         message=outcome.message,
+        grounding=run.grounding,
         tool_calls=run.traces,
         steps=run.steps,
         usage=UsageOut(input_tokens=run.usage.input_tokens, output_tokens=run.usage.output_tokens,
@@ -159,6 +181,7 @@ def run_question(
             "status": result.status,
             "steps": result.steps,
             "tool_call_count": len(result.tool_calls),
+            "grounding_passed": run.grounding.passed if run.grounding else None,
             "duration_ms": result.duration_ms,
             "input_tokens": run.usage.input_tokens,
             "output_tokens": run.usage.output_tokens,
@@ -212,7 +235,7 @@ def _loop(
 
         turn = response.turn
         if isinstance(turn, FinalAnswer) and turn.text.strip():
-            return _Outcome("answered", answer=turn.text)
+            return _grounded_outcome(turn, messages, run)
         if isinstance(turn, Clarify) and turn.question.strip():
             return _Outcome("clarification_needed", clarifying_question=turn.question)
         if not isinstance(turn, ToolCalls) or not turn.calls:
@@ -244,3 +267,22 @@ def _loop(
             )
             # Errors are sent back too: the provider decides what to do with a failed tool call.
             messages.append(ToolResultMessage(call.id, result.model_dump()))
+
+
+def _grounded_outcome(turn: FinalAnswer, messages: list[Message], run: _Run) -> _Outcome:
+    """Return the answer only if every number in it comes from this run's tool output."""
+    tool_results = [m.result for m in messages if isinstance(m, ToolResultMessage)]
+    arguments = [trace.arguments for trace in run.traces if trace.arguments]
+    report = check_grounding(turn.text, tool_results, question_arguments=arguments)
+    run.grounding = GroundingOut(**report.model_dump())
+    if not report.passed:
+        logger.warning(
+            "grounding_failed",
+            extra={"event": "grounding_failed", "unsupported": report.unsupported,
+                   "numbers_checked": report.numbers_checked},
+        )
+        return _Outcome(
+            "grounding_failed",
+            message="The answer contained figures that could not be verified against the data, so it was withheld.",
+        )
+    return _Outcome("out_of_scope" if turn.out_of_scope else "answered", answer=turn.text)

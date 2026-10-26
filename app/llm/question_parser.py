@@ -173,3 +173,162 @@ def find_names(question: str, names: list[str]) -> list[str]:
         if match:
             found.append((match.start(), name))
     return [name for _, name in sorted(found)]
+
+
+# --- scope, clarification and premise rules --------------------------------------------
+#
+# Clarify vs out of scope: if a different period or name would make the question answerable,
+# ask (Clarify); if the data can never answer it, refuse politely (out of scope).
+
+_INSTRUCTION_LIKE = re.compile(
+    r"\bignore\b.{0,40}\b(instructions?|prompts?|rules)\b|\bsystem prompt\b"
+    # Statement shapes, not single words: "why did revenue drop from May" must not match.
+    r"|\b(drop|truncate|alter|create)\s+(table|database|index|view)\b|\bdelete\s+from\b|\binsert\s+into\b"
+    r"|\bupdate\s+\w+\s+set\b"
+    r"|\bselect\b.*\bfrom\s+(sales|products|regions|sqlite_\w+)\b|\bunion\s+select\b|;\s*--|\bpragma\b",
+    re.IGNORECASE,
+)
+_FORECAST = re.compile(
+    r"\b(predict(s|ed|ion|ions)?|forecast(s|ed|ing)?|projection(s)?|projected|will|going to)\b"
+    r"|\bnext\s+(month|quarter|year|week)\b",
+    re.IGNORECASE,
+)
+# Metrics the data does not have, mapped to how an answer should name them.
+_UNSUPPORTED_METRICS = (
+    (re.compile(r"\bprofit(s|ability|able)?\b", re.IGNORECASE), "Profit"),
+    (re.compile(r"\bmargins?\b", re.IGNORECASE), "Margin"),
+    (re.compile(r"\b(costs?|cogs|expenses?|spend(ing)?)\b", re.IGNORECASE), "Cost data"),
+    (re.compile(r"\b(customers?|clients?|buyers?)\b", re.IGNORECASE), "Customer data"),
+    (re.compile(r"\b(employees?|staff|headcount|salar(y|ies))\b", re.IGNORECASE), "Employee data"),
+    (re.compile(r"\b(inventory|stock)\b", re.IGNORECASE), "Inventory data"),
+    (re.compile(r"\b(returns|refunds?|churn)\b", re.IGNORECASE), "Returns data"),
+)
+_SUPPORTED_METRIC = re.compile(r"\b(revenue|sales|sold|sell(s|ing)?|units?|orders?)\b", re.IGNORECASE)
+_RELATIVE_TIME = re.compile(
+    r"\b(last|this|past|current)\s+(month|quarter|year|week)s?\b"
+    r"|\b(recent|recently|lately|ytd|year[- ]to[- ]date|yesterday|today)\b",
+    re.IGNORECASE,
+)
+_DOWN_WORDS = re.compile(
+    r"\b(drop(s|ped)?|declin(e|ed|es|ing)|fell|fall(s|ing)?|decreas(e|ed|es|ing)|dip(s|ped)?|"
+    r"(went|go|gone|going) down)\b",
+    re.IGNORECASE,
+)
+_UP_WORDS = re.compile(
+    r"\b(increas(e|ed|es|ing)|grew|grow(s|ing|th)?|r(i|o)se|risen|jump(s|ed)?|(went|go|gone|going) up)\b",
+    re.IGNORECASE,
+)
+_DIMENSION_WORDS = {"region", "regions", "product", "products", "category", "categories"}
+# Words that may follow "in/for/from" without being a name ("in the West", "in total", "in revenue").
+_FOLLOWER_STOPWORDS = {
+    "the", "our", "my", "a", "an", "all", "each", "every", "total", "this", "that", "both",
+    "terms", "general", "particular", "comparison", "contrast", "detail", "short", "which", "what",
+    "revenue", "sales", "units", "orders", "last", "past", "current", "recent", "recently",
+    # "in total for 2026": after skipping "total", the next word can be another preposition.
+    "in", "for", "from", "to", "of", "and", "or", "vs", "versus", "with",
+}  # fmt: skip
+_PREPOSITION_FOLLOWER = re.compile(
+    r"\b(?:in|for|from)\s+(?:(?:the|our|my|a|an|all|each|every|total|this|that)\s+)?([^\W_][\w&'-]*)",
+    re.IGNORECASE,
+)
+_WORD = re.compile(r"[^\W\d_][\w&'-]*")
+
+
+def detect_out_of_scope(question: str) -> str | None:
+    """Questions the data can NEVER answer, decided from the text alone (no data needed).
+
+    Returns "instructions", "forecast" or "metric", or None. "metric" only when an unsupported
+    metric is asked for and no supported one: "revenue and profit" is a Clarify, not a refusal.
+    """
+    if _INSTRUCTION_LIKE.search(question):
+        return "instructions"
+    if _FORECAST.search(question):
+        return "forecast"
+    if find_unsupported_metric(question) and not mentions_supported_metric(question):
+        return "metric"
+    return None
+
+
+def find_unsupported_metric(question: str) -> str | None:
+    """How to name the first unsupported metric mentioned ("Profit", "Customer data"), or None."""
+    for pattern, noun in _UNSUPPORTED_METRICS:
+        if pattern.search(question):
+            return noun
+    return None
+
+
+def mentions_supported_metric(question: str) -> bool:
+    return _SUPPORTED_METRIC.search(question) is not None
+
+
+def has_relative_time(question: str) -> bool:
+    """"last month", "this year", "recently", ...: these depend on today's date, so we ask instead."""
+    return _RELATIVE_TIME.search(question) is not None
+
+
+def claimed_direction(question: str) -> str | None:
+    """"down" or "up" if the question presumes a direction ("why did revenue drop"), else None."""
+    down, up = _DOWN_WORDS.search(question), _UP_WORDS.search(question)
+    if down and not up:
+        return "down"
+    if up and not down:
+        return "up"
+    return None
+
+
+def _is_known_word(word: str, rest: str, known_names: list[str]) -> bool:
+    """Could this word (followed by `rest` of the question) be something other than an unknown name?"""
+    lower = word.lower()
+    if lower in _MONTH_WORDS or re.fullmatch(r"q[1-4]", lower) or word[0].isdigit():
+        return True
+    if lower in _FOLLOWER_STOPWORDS or lower in _DIMENSION_WORDS:
+        return True
+    # A known name starts here ("Phone Max"), or the word is part of one ("StudioBook").
+    rest_lower = rest.lower()
+    for name in known_names:
+        if rest_lower.startswith(name.lower()) or lower in name.lower().split():
+            return True
+    return False
+
+
+def find_unknown_names(question: str, known_names: list[str]) -> list[str]:
+    """Words that look like a product/region name but are not in the data, in order of appearance.
+
+    Two heuristics, documented because they can miss things:
+      1. The word after "in", "for" or "from" (skipping one article like "the"), any case:
+         "revenue in europe" -> "europe". It is fine if it is a month, quarter, year, known
+         name, dimension word, relative-time word or one of a few stopwords.
+      2. A word containing an uppercase letter that is not the first word (unless it has an
+         uppercase letter inside it, like "iPhone") and is not a month, quarter, "I", part of
+         a known name or a word the rules already understand ("Top", "Revenue", "Compare").
+    A lowercase unknown name elsewhere ("did europe do well") is not caught.
+    """
+    found: dict[str, int] = {}
+    for match in _PREPOSITION_FOLLOWER.finditer(question):
+        word = match[1]
+        if not _is_known_word(word, question[match.start(1):], known_names):
+            found.setdefault(word, match.start(1))
+    for index, match in enumerate(_WORD.finditer(question)):
+        word = match[0].split("'")[0]  # "West's" -> "West", "I'm" -> "I"
+        has_upper = any(c.isupper() for c in (word if index else word[1:]))
+        if not has_upper or word in ("I", "GroundedBI"):
+            continue
+        if _is_known_word(word, question[match.start():], known_names):
+            continue
+        if detect_intent(word) or mentions_supported_metric(word) or find_unsupported_metric(word):
+            continue  # a word the rules understand, just capitalized
+        found.setdefault(word, match.start())
+    return sorted(found, key=found.__getitem__)
+
+
+def has_analytics_vocabulary(question: str, known_names: list[str]) -> bool:
+    """Does the question talk about anything this dataset covers at all?"""
+    return bool(
+        mentions_supported_metric(question)
+        or find_unsupported_metric(question)
+        or detect_intent(question)
+        or has_relative_time(question)
+        or _PERIOD_TOKEN.search(question)
+        or any(word.lower() in _DIMENSION_WORDS for word in _WORD.findall(question))
+        or find_names(question, known_names)
+    )

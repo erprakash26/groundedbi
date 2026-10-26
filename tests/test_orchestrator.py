@@ -283,3 +283,36 @@ def test_log_lines_are_json_with_request_id(seeded_conn, log_lines):
     assert isinstance(completed["duration_ms"], float)
     # Tool executions inside the run carry the same request ID.
     assert all(line["request_id"] == "req-orch-1" for line in lines if line.get("event") == "tool_executed")
+
+
+# --- grounding and out-of-scope statuses ------------------------------------------------------
+
+
+def test_out_of_scope_final_answer_gets_out_of_scope_status(seeded_conn):
+    result = ask(seeded_conn, ScriptedProvider([FinalAnswer("I can't forecast.", out_of_scope=True)]))
+    assert result.status == "out_of_scope"
+    assert result.answer == "I can't forecast."
+    assert result.grounding.passed
+
+
+def test_final_answer_with_a_number_no_tool_returned_is_withheld(seeded_conn):
+    provider = ScriptedProvider([ToolCalls((TOP_3,)), FinalAnswer("Revenue was $123,456.")])
+    result = ask(seeded_conn, provider)
+    assert result.status == "grounding_failed"
+    assert result.answer is None
+    assert result.grounding.unsupported == ["$123,456"]
+
+
+def test_final_answer_quoting_tool_output_passes(seeded_conn):
+    provider = ScriptedProvider([ToolCalls((TOP_3,)), FinalAnswer("Done.")])
+    first = ask(seeded_conn, provider)
+    # Quote the real display string of the top product from the same database.
+    top = next(m.result for m in provider.seen[-1] if isinstance(m, ToolResultMessage))["data"]["rows"][0]
+    provider = ScriptedProvider([ToolCalls((TOP_3,)), FinalAnswer(f"{top['label']} led with {top['revenue_display']}.")])
+    result = ask(seeded_conn, provider)
+    assert first.status == result.status == "answered"
+    assert result.grounding.numbers_checked >= 1
+
+
+def test_no_grounding_report_when_there_is_no_final_answer(seeded_conn):
+    assert ask(seeded_conn, ScriptedProvider([Clarify("Which year?")])).grounding is None
