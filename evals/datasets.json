@@ -16,8 +16,8 @@
     {
       "split": "heldout_v2",
       "file": "questions_heldout_v2.json",
-      "state": "fresh",
-      "reason": "written after commit dc77562, committed before any run"
+      "state": "seen",
+      "reason": "inspected after the first run at 12b5d38"
     }
   ]
 }
