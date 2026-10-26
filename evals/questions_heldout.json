@@ -1,0 +1,153 @@
+{
+  "split": "heldout",
+  "dataset": "scripts/seed_data.py, seed 42, default range (2026-01 to 2026-06)",
+  "description": "Held-out evaluation questions, written and labelled before the eval runner exists. Never tune the planner against these: use them only to measure. expected_tools lists the main tools in call order, excluding get_data_overview. expected_arguments lists only the keys that must match; for several calls of the same tool it applies to each.",
+  "questions": [
+    {
+      "id": "heldout-01",
+      "split": "heldout",
+      "category": "normal",
+      "question": "what happened to sales in march?",
+      "expected_status": "answered",
+      "expected_tools": ["get_change_drivers"],
+      "expected_arguments": {
+        "period_a_start": "2026-02",
+        "period_a_end": "2026-02",
+        "period_b_start": "2026-03",
+        "period_b_end": "2026-03"
+      },
+      "must_contain": ["StudioBook 16 / West", "$314,032"],
+      "must_not_contain": [],
+      "notes": "Lowercase, no year, no explicit comparison month: March should resolve to 2026-03 from the data and be compared with the previous month."
+    },
+    {
+      "id": "heldout-02",
+      "split": "heldout",
+      "category": "normal",
+      "question": "How much revenue did the West region bring in during Q2?",
+      "expected_status": "answered",
+      "expected_tools": ["get_revenue_breakdown"],
+      "expected_arguments": {
+        "dimension": "region",
+        "start_month": "2026-04",
+        "end_month": "2026-06"
+      },
+      "must_contain": ["$2,021,557"],
+      "must_not_contain": [],
+      "notes": "Quarter without a year resolves against the data (Q2 2026). West's Q2 revenue is $2,021,557."
+    },
+    {
+      "id": "heldout-03",
+      "split": "heldout",
+      "category": "normal",
+      "question": "Which product sold best in January 2026?",
+      "expected_status": "answered",
+      "expected_tools": ["get_top_products"],
+      "expected_arguments": {
+        "start_month": "2026-01",
+        "end_month": "2026-01"
+      },
+      "must_contain": ["StudioBook 16", "$507,297"],
+      "must_not_contain": [],
+      "notes": "Expected values looked up with app.services.analytics.top_products on a freshly seeded database (seed 42, default range), not by running the planner: StudioBook 16, 50729700 cents, displayed as $507,297."
+    },
+    {
+      "id": "heldout-04",
+      "split": "heldout",
+      "category": "false_premise",
+      "question": "Why did sales go up in March?",
+      "expected_status": "answered",
+      "expected_tools": ["get_change_drivers"],
+      "expected_arguments": {
+        "period_a_start": "2026-02",
+        "period_a_end": "2026-02",
+        "period_b_start": "2026-03",
+        "period_b_end": "2026-03"
+      },
+      "must_contain": ["didn't", "$314,032"],
+      "must_not_contain": [],
+      "notes": "Revenue fell from February to March 2026, so the answer must correct the premise instead of explaining an increase."
+    },
+    {
+      "id": "heldout-05",
+      "split": "heldout",
+      "category": "vague",
+      "question": "how are we doing?",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": [],
+      "notes": "No metric, period or name: should ask what the user wants rather than guess."
+    },
+    {
+      "id": "heldout-06",
+      "split": "heldout",
+      "category": "vague_tricky",
+      "question": "Show me sales for the Northeast region",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": ["Northeast"],
+      "must_not_contain": [],
+      "notes": "Northeast is not a region in the data. It must not be read as North; the clarifying question should name Northeast and list the valid regions."
+    },
+    {
+      "id": "heldout-07",
+      "split": "heldout",
+      "category": "out_of_scope",
+      "question": "What is the average order value by customer segment?",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": ["$"],
+      "notes": "Customer segments are not in the data. A refusal must contain no figures."
+    },
+    {
+      "id": "heldout-08",
+      "split": "heldout",
+      "category": "out_of_scope",
+      "question": "Write me a poem about our Q1 numbers",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": ["$"],
+      "notes": "Creative writing is outside the product, even though it mentions a period. No figures."
+    },
+    {
+      "id": "heldout-09",
+      "split": "heldout",
+      "category": "typos",
+      "question": "why did revnue fall in march vs febuary",
+      "expected_status": "answered",
+      "expected_tools": ["get_change_drivers"],
+      "expected_arguments": {
+        "period_a_start": "2026-02",
+        "period_a_end": "2026-02",
+        "period_b_start": "2026-03",
+        "period_b_end": "2026-03"
+      },
+      "must_contain": ["StudioBook 16 / West"],
+      "must_not_contain": [],
+      "notes": "Misspelled 'revenue' and 'February'. The comparison month should still be February 2026."
+    },
+    {
+      "id": "heldout-10",
+      "split": "heldout",
+      "category": "no_data",
+      "question": "Revenue by category for July 2026",
+      "expected_status": "answered",
+      "expected_tools": ["get_revenue_breakdown"],
+      "expected_arguments": {
+        "dimension": "category",
+        "start_month": "2026-07",
+        "end_month": "2026-07"
+      },
+      "must_contain": ["July 2026", "June 2026"],
+      "must_not_contain": ["$"],
+      "notes": "July 2026 is after the data ends (June 2026). The answer should say there is no data for July 2026 and where the data ends, with no figures."
+    }
+  ]
+}
