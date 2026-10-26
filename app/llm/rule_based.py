@@ -47,12 +47,16 @@ from app.llm.question_parser import (
     find_names,
     find_unknown_names,
     find_unsupported_metric,
+    asks_bottom_ranking,
+    asks_single_product,
     has_analytics_vocabulary,
     has_relative_time,
     mentions_supported_metric,
     parse_periods,
     parse_top_n,
     previous_span,
+    ranked_dimension,
+    unexplained_words,
 )
 
 OVERVIEW_CALL_ID = "call_1"
@@ -65,6 +69,7 @@ CAPABILITIES = (
 NO_DATA_ANSWER = "There is no sales data in the database yet, so I can't answer questions about it."
 _OUT_OF_SCOPE_REASONS = {
     "instructions": "I can't follow instructions or run database commands; I only answer questions about the sales data.",
+    "creative": "I can't write poems, stories or other creative pieces; I only answer questions about the sales data.",
     "forecast": "I can't make forecasts or predictions; I only report what is in the historical sales data.",
     "unrelated": "That question is outside what I can help with; I only answer questions about the sales data.",
 }
@@ -90,7 +95,7 @@ class PlannedCall:
 
 @dataclass(frozen=True)
 class Plan:
-    intent: str  # which template writes the answer: change, compare, top, monthly, breakdown
+    intent: str  # template: change, named_change, compare, top, rank_dimension, monthly, breakdown
     calls: tuple[PlannedCall, ...]
     highlight: str | None = None  # a product/region/category named in the question
     highlight_kind: str | None = None  # "product", "region" or "category"
@@ -180,8 +185,11 @@ def plan_question(question: str, overview: dict[str, Any]) -> Plan | None:
     stated_dimension = detect_dimension(question)
     intent = detect_intent(question)
     if intent is None:
-        # "Revenue in the West in March": a plain lookup, if it names a metric and a period or name.
-        if not (mentions_supported_metric(question) and (spans or highlight)):
+        # The total intent ("Revenue in April 2026", "revenue in the west in march") is used only
+        # when every content word is understood. Anything else returns None and the caller asks:
+        # an intent is never picked silently.
+        known = overview["products"] + overview["regions"] + overview["categories"]
+        if not (mentions_supported_metric(question) and (spans or highlight)) or unexplained_words(question, known):
             return None
         intent = "breakdown" if highlight else "monthly"
     note = None
@@ -196,16 +204,30 @@ def plan_question(question: str, overview: dict[str, Any]) -> Plan | None:
             b = MonthSpan(last_month, last_month)
             a = previous_span(b)
             note = "No period was given, so this compares the latest month in the data with the month before."
-        if intent == "change":
+        if intent == "compare" and highlight:
+            # compare_periods returns company totals, which would answer a different question.
+            # The named item's own row comes from the drivers by its dimension (all rows fit in 20).
+            intent = "named_change"
+            args = {**_two_period_args(a, b), "dimension": kind, "limit": MAX_TOP_N}
+            calls = (PlannedCall("get_change_drivers", args),)
+        elif intent == "change":
             dimension = stated_dimension or kind or "product_region"
             calls = (PlannedCall("get_change_drivers", {**_two_period_args(a, b), "dimension": dimension}),)
         else:
             calls = (PlannedCall("compare_periods", _two_period_args(a, b)),)
+    elif intent == "top" and ranked_dimension(question) and "product" not in question.lower():
+        # "Which region had the highest revenue?": no top-N tool for regions or categories, but
+        # the breakdown is already sorted by revenue, highest first.
+        intent = "rank_dimension"
+        span = MonthSpan(min(s.start for s in spans), max(s.end for s in spans)) if spans else full_range
+        if not spans:
+            note = "No period was given, so this covers all available data."
+        calls = (PlannedCall("get_revenue_breakdown", {**_span_args(span), "dimension": ranked_dimension(question)}),)
     elif intent == "top":
         targets = sorted(spans[:2]) or [full_range]  # two periods -> top products for each
         if not spans:
             note = "No period was given, so this covers all available data."
-        limit = parse_top_n(question)
+        limit = 1 if asks_single_product(question) else parse_top_n(question)
         if limit > MAX_TOP_N:
             # The asked-for number is not repeated: it is not in any tool result, so grounding would reject it.
             limit = MAX_TOP_N
@@ -279,6 +301,14 @@ def triage(question: str, overview: dict[str, Any]) -> Plan | Clarify | FinalAns
             + _for_example([f"Revenue in {period}", f"Revenue by region in {period}"])
         )
 
+    if asks_bottom_ranking(question):
+        spans = parse_periods(question, coverage["last_month"])
+        period = short_label(spans[0]) if spans else month_label(coverage["last_month"])
+        return Clarify(
+            "I can only rank from the top: no tool returns the lowest sellers."
+            " Would you like the top products instead?" + _for_example([f"Top 5 products in {period}"])
+        )
+
     unknown = find_unknown_names(question, known)
     if unknown:
         return Clarify(
@@ -297,8 +327,24 @@ def triage(question: str, overview: dict[str, Any]) -> Plan | Clarify | FinalAns
 
     plan = plan_question(question, overview)
     if plan is None:
-        return Clarify("I'm not sure what you'd like to see. What would you like to know?" + _for_example(examples))
+        return _understood_clarify(question, overview, examples)
     return plan
+
+
+def _understood_clarify(question: str, overview: dict[str, Any], examples: list[str]) -> Clarify:
+    """No intent was recognized: say what WAS understood and offer the two likely readings."""
+    coverage = overview["data_coverage"]
+    spans = parse_periods(question, coverage["last_month"])
+    highlight, _ = _highlight(question, overview)
+    if not spans and not highlight:
+        return Clarify("I'm not sure what you'd like to see. What would you like to know?" + _for_example(examples))
+    span = spans[0] if spans else MonthSpan(coverage["last_month"], coverage["last_month"])
+    period, previous = short_label(span), short_label(previous_span(span))
+    subject = f"{highlight}'s revenue in {period}" if highlight else f"{period}'s total revenue"
+    return Clarify(
+        f"Do you want {subject}, or what drove its change from {previous}?"
+        + _for_example([f"Revenue in {period}", f"Why did revenue change in {period}?"])
+    )
 
 
 # --- answer templates ------------------------------------------------------------
@@ -313,6 +359,7 @@ def _headline(
     a: str,
     b: str,
     claimed: str | None,
+    subject: str = "Revenue",
 ) -> str:
     """Direction from the SIGN of change_cents; a question's wrong premise is corrected first."""
     pct = f" ({pct_abs}%)" if pct_abs is not None else ""
@@ -321,11 +368,11 @@ def _headline(
     if contradicted:
         denied = "drop" if claimed == "down" else "rise"
         if actual is None:
-            return f"Revenue didn't {denied}: it was unchanged at {total_b} in {a} and {b}."
-        return f"Revenue didn't {denied}: it {actual} by {change_abs}{pct} from {a} to {b} ({total_a} to {total_b})."
+            return f"{subject} didn't {denied}: it was unchanged at {total_b} in {a} and {b}."
+        return f"{subject} didn't {denied}: it {actual} by {change_abs}{pct} from {a} to {b} ({total_a} to {total_b})."
     if actual is None:
-        return f"Revenue was unchanged at {total_b} in {a} and {b}."
-    return f"Revenue {actual} by {change_abs}{pct}, from {total_a} in {a} to {total_b} in {b}."
+        return f"{subject} was unchanged at {total_b} in {a} and {b}."
+    return f"{subject} {actual} by {change_abs}{pct}, from {total_a} in {a} to {total_b} in {b}."
 
 
 def _change_answer(plan: Plan, data: dict[str, Any]) -> str:
@@ -370,8 +417,51 @@ def _top_list(data: dict[str, Any]) -> str:
     return "; ".join(f"{row['label']} ({row['revenue_display']})" for row in data["rows"])
 
 
+def _named_change_answer(plan: Plan, data: dict[str, Any]) -> str:
+    """One named item's own change: its revenue in each period, its change and its share."""
+    a, b = period_label(_span(data["period_a"])), period_label(_span(data["period_b"]))
+    name = plan.highlight
+    row = next((r for r in data["rows"] if r["label"].lower() == name.lower()), None)
+    if row is None:
+        return f"{name} had no sales in {a} or {b}."
+    text = _headline(
+        row["change_cents"], row["change_abs_display"], None,
+        row["revenue_a_display"], row["revenue_b_display"], a, b, plan.claimed, subject=f"{name} revenue",
+    )  # fmt: skip
+    if row["share_of_total_change"] is not None:
+        text += (
+            f" That is {row['share_of_total_change']}% of the total change in revenue"
+            f" ({data['total_change_display']})."
+        )
+    return text
+
+
+def _rank_dimension_answer(plan: Plan, data: dict[str, Any]) -> str:
+    """Highest revenue by region or category. A winner is named only if it is strictly ahead."""
+    period = period_label(_span(data["period"]))
+    rows = data["rows"]
+    if not rows:
+        return f"There were no sales in {period}."
+    first = rows[0]
+    # Rows are sorted by revenue, highest first, so ties sit together at the top.
+    tied = [r for r in rows if r["revenue_cents"] == first["revenue_cents"]]
+    if len(tied) == 1:
+        lead = f"{first['label']} had the highest revenue in {period}: {first['revenue_display']}."
+    else:
+        lead = f"{_join([r['label'] for r in tied])} tied for the highest revenue in {period}: {first['revenue_display']} each."
+    ranking = "; ".join(f"{row['label']} {row['revenue_display']}" for row in rows)
+    return f"{lead} Full ranking by {data['dimension']}: {ranking}."
+
+
 def _top_answer(plan: Plan, results: list[dict[str, Any]]) -> str:
     limit = results[0]["arguments"]["limit"]
+    if limit == 1 and len(results) == 1:
+        data = results[0]["data"]
+        period = period_label(_span(data["period"]))
+        if not data["rows"]:
+            return f"There were no product sales in {period}."
+        row = data["rows"][0]
+        return f"The top product by revenue in {period} was {row['label']} ({row['revenue_display']})."
     # "Top 5" only when 5 rows came back; with fewer products than the limit, just "Top".
     full = all(len(r["data"]["rows"]) == limit for r in results)
     heading = f"Top {limit} products by revenue" if full else "Top products by revenue"
@@ -411,6 +501,8 @@ def _breakdown_answer(plan: Plan, data: dict[str, Any]) -> str:
 
 _SINGLE_RESULT_WRITERS = {
     "change": _change_answer,
+    "named_change": _named_change_answer,
+    "rank_dimension": _rank_dimension_answer,
     "compare": _compare_answer,
     "monthly": _monthly_answer,
     "breakdown": _breakdown_answer,
@@ -437,8 +529,8 @@ def _coverage_sentence(results: list[dict[str, Any]]) -> str | None:
 
 
 def _highlight_sentence(plan: Plan, results: list[dict[str, Any]]) -> str | None:
-    if plan.highlight is None:
-        return None
+    if plan.highlight is None or plan.intent == "named_change":
+        return None  # a named_change answer is already about the named item
     name = plan.highlight
     # What the rows are labelled by. compare and monthly return totals only: nothing to highlight.
     row_dimension = results[0]["data"].get("dimension") or ("product" if plan.intent == "top" else None)

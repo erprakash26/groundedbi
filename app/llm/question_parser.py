@@ -47,14 +47,18 @@ _NUMBER_WORDS = {
     "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "twenty": 20,
 }  # fmt: skip
 
-# Checked in this order; the first match wins. Change beats top because "top drivers of the
-# drop" is a change question; top beats compare because "top 5 in March vs April" wants
+# Checked in this order; the first match wins. Change beats top because "what drove most of
+# the drop" is a change question; top beats compare because "top 5 in March vs April" wants
 # products for both months, not two totals.
 _INTENT_RULES = (
     ("change", re.compile(
         r"\b(why|drop(s|ped)?|declin(e|ed|es|ing)|fell|fall(s|ing)?|decreas(e|ed|es|ing)|"
-        r"increas(e|ed|es|ing)|chang(e|ed|es)|grew|grow(th)?|r(i|o)se|jump(ed)?|drivers?)\b", re.IGNORECASE)),
-    ("top", re.compile(r"\btop\b|\bbest[- ]?sell(ing|ers?)\b", re.IGNORECASE)),
+        r"increas(e|ed|es|ing)|chang(e|ed|es)|grew|grow(th)?|r(i|o)se|jump(ed)?|drivers?)\b"
+        r"|\bwhat\s+happened\b"
+        # "how did revenue go/move/change"; "how did X do" stays a comparison of performance.
+        r"|\bhow\s+did\b[^?.!]{0,60}?\b(go|move|change)\b", re.IGNORECASE)),
+    ("top", re.compile(
+        r"\btop\b|\bbest\b|\bbest[- ]?sell(ing|ers?)\b|\bhighest\b|\bleading\b|\bmost\b", re.IGNORECASE)),
     ("compare", re.compile(r"\b(compar(e|ed|ing|ison)|vs|versus)\b", re.IGNORECASE)),
     ("monthly", re.compile(
         r"\b(monthly|trends?|over time|by month|per month|each month|month[- ]by[- ]month)\b", re.IGNORECASE)),
@@ -193,17 +197,34 @@ _FORECAST = re.compile(
     r"|\bnext\s+(month|quarter|year|week)\b",
     re.IGNORECASE,
 )
-# Metrics the data does not have, mapped to how an answer should name them.
+# Creative writing is never a data question, even when it mentions a metric or a period.
+# "summary", "overview" and "report" are deliberately NOT here: those are requests for data.
+_CREATIVE = re.compile(r"\b(poems?|songs?|stor(y|ies)|jokes?|haikus?|essays?|limericks?|lyrics|rap|sonnets?)\b", re.IGNORECASE)
+# Metrics the data does not have, mapped to how an answer should name them. Checked in order,
+# so "average order value" is named before the plain "order" rule sees it.
 _UNSUPPORTED_METRICS = (
     (re.compile(r"\bprofit(s|ability|able)?\b", re.IGNORECASE), "Profit"),
     (re.compile(r"\bmargins?\b", re.IGNORECASE), "Margin"),
+    (re.compile(r"\b(average\s+order\s+value|aov)\b", re.IGNORECASE), "Average order value"),
+    (re.compile(r"\bbasket\s+sizes?\b", re.IGNORECASE), "Basket size"),
+    # The data counts sales rows, but answers never report orders, so they are not offered.
+    (re.compile(r"\borders?\b", re.IGNORECASE), "Order data"),
     (re.compile(r"\b(costs?|cogs|expenses?|spend(ing)?)\b", re.IGNORECASE), "Cost data"),
     (re.compile(r"\b(customers?|clients?|buyers?)\b", re.IGNORECASE), "Customer data"),
     (re.compile(r"\b(employees?|staff|headcount|salar(y|ies))\b", re.IGNORECASE), "Employee data"),
     (re.compile(r"\b(inventory|stock)\b", re.IGNORECASE), "Inventory data"),
     (re.compile(r"\b(returns|refunds?|churn)\b", re.IGNORECASE), "Returns data"),
 )
-_SUPPORTED_METRIC = re.compile(r"\b(revenue|sales|sold|sell(s|ing)?|units?|orders?)\b", re.IGNORECASE)
+_SUPPORTED_METRIC = re.compile(r"\b(revenue|sales|sold|sell(s|ing)?|units?)\b", re.IGNORECASE)
+# How the business is doing, with no analytics intent yet: ask what they want, don't refuse.
+_BUSINESS_PERFORMANCE = re.compile(
+    r"\b(business|performance|perform(s|ed|ing)?|doing|results?)\b|\bgoing\s+(well|badly|ok(ay)?)\b", re.IGNORECASE
+)
+# Rankings from the bottom: no tool returns them, so ask instead of answering something else.
+_BOTTOM_RANKING = re.compile(r"\b(worst|lowest|bottom|least)\b", re.IGNORECASE)
+# "Which product ..." / "What product ..." (singular) asks for exactly one.
+_SINGLE_PRODUCT = re.compile(r"\b(which|what)\s+(?:[\w-]+\s+)?product\b(?!s)", re.IGNORECASE)
+_RANKED_DIMENSION = re.compile(r"\b(regions?|categor(?:y|ies))\b", re.IGNORECASE)
 _RELATIVE_TIME = re.compile(
     r"\b(last|this|past|current)\s+(month|quarter|year|week)s?\b"
     r"|\b(recent|recently|lately|ytd|year[- ]to[- ]date|yesterday|today)\b",
@@ -219,29 +240,53 @@ _UP_WORDS = re.compile(
     re.IGNORECASE,
 )
 _DIMENSION_WORDS = {"region", "regions", "product", "products", "category", "categories"}
-# Words that may follow "in/for/from" without being a name ("in the West", "in total", "in revenue").
-_FOLLOWER_STOPWORDS = {
-    "the", "our", "my", "a", "an", "all", "each", "every", "total", "this", "that", "both",
-    "terms", "general", "particular", "comparison", "contrast", "detail", "short", "which", "what",
-    "revenue", "sales", "units", "orders", "last", "past", "current", "recent", "recently",
-    # "in total for 2026": after skipping "total", the next word can be another preposition.
-    "in", "for", "from", "to", "of", "and", "or", "vs", "versus", "with",
+_METRIC_WORDS = {"revenue", "sales", "sold", "sell", "sells", "selling", "units", "unit"}
+# Common English words that can follow "in/for/from/during", or stand before "region/product",
+# without being a name: articles and determiners, prepositions, pronouns, and frequent verbs,
+# adverbs and adjectives. Kept small on purpose; tests pin it down.
+COMMON_WORDS = {
+    # articles, determiners, pronouns
+    "the", "a", "an", "this", "that", "these", "those", "each", "every", "any", "all", "both",
+    "which", "what", "whose", "our", "my", "your", "their", "its", "us", "we", "me", "it", "them",
+    # prepositions and conjunctions
+    "in", "for", "from", "during", "to", "of", "on", "at", "with", "between", "than", "by", "per",
+    "and", "or", "vs", "versus",
+    # frequent verbs
+    "be", "is", "was", "are", "were", "do", "did", "does", "have", "had", "has", "get", "got",
+    "go", "went", "come", "came", "bring", "brought", "make", "made", "see", "show", "earn",
+    "earned", "generate", "generated", "sell", "sold",
+    # adverbs, fillers and adjectives that often come before "product"
+    "total", "overall", "general", "particular", "detail", "short", "terms", "comparison",
+    "contrast", "now", "then", "there", "here", "popular", "new", "top", "best", "leading",
+    "highest", "most", "single", "individual", "specific", "other", "same", "one",
+    # relative-time words (handled by their own Clarify rule)
+    "last", "past", "current", "recent", "recently",
 }  # fmt: skip
-_PREPOSITION_FOLLOWER = re.compile(
-    r"\b(?:in|for|from)\s+(?:(?:the|our|my|a|an|all|each|every|total|this|that)\s+)?([^\W_][\w&'-]*)",
+# Words that carry no meaning of their own in an amount question ("How much revenue came in
+# during May 2026?"). The total intent is only used when every other word is understood.
+_FILLER_WORDS = COMMON_WORDS | {
+    "how", "much", "many", "please", "tell", "give", "show", "list", "summary", "summarize",
+    "summarise", "overview", "recap", "report", "write", "s", "region", "regions",
+}  # fmt: skip
+_NAME_FOLLOWING = re.compile(
+    r"\b(?:in|for|from|during)\s+(?:(?:the|our|my|a|an|all|each|every|total|this|that)\s+)?([^\W_][\w&'-]*)",
     re.IGNORECASE,
 )
+_NAME_BEFORE_DIMENSION = re.compile(r"\b([^\W\d_][\w&'-]*)\s+(?:region|product|category)s?\b", re.IGNORECASE)
 _WORD = re.compile(r"[^\W\d_][\w&'-]*")
+_TOKEN = re.compile(r"[^\W_][\w&'-]*")
 
 
 def detect_out_of_scope(question: str) -> str | None:
     """Questions the data can NEVER answer, decided from the text alone (no data needed).
 
-    Returns "instructions", "forecast" or "metric", or None. "metric" only when an unsupported
-    metric is asked for and no supported one: "revenue and profit" is a Clarify, not a refusal.
+    Returns "instructions", "creative", "forecast" or "metric", or None. "metric" only when an
+    unsupported metric is asked for and no supported one: "revenue and profit" is a Clarify.
     """
     if _INSTRUCTION_LIKE.search(question):
         return "instructions"
+    if _CREATIVE.search(question):
+        return "creative"
     if _FORECAST.search(question):
         return "forecast"
     if find_unsupported_metric(question) and not mentions_supported_metric(question):
@@ -266,6 +311,24 @@ def has_relative_time(question: str) -> bool:
     return _RELATIVE_TIME.search(question) is not None
 
 
+def asks_bottom_ranking(question: str) -> bool:
+    """"worst", "lowest", "bottom", "least": no tool ranks from the bottom."""
+    return _BOTTOM_RANKING.search(question) is not None
+
+
+def asks_single_product(question: str) -> bool:
+    """"Which product ..." (singular) means one product: limit 1."""
+    return _SINGLE_PRODUCT.search(question) is not None
+
+
+def ranked_dimension(question: str) -> str | None:
+    """"region" or "category" if a ranking question ranks those instead of products."""
+    match = _RANKED_DIMENSION.search(question)
+    if match is None:
+        return None
+    return "category" if match[1].lower().startswith("categor") else "region"
+
+
 def claimed_direction(question: str) -> str | None:
     """"down" or "up" if the question presumes a direction ("why did revenue drop"), else None."""
     down, up = _DOWN_WORDS.search(question), _UP_WORDS.search(question)
@@ -276,58 +339,103 @@ def claimed_direction(question: str) -> str | None:
     return None
 
 
-def _is_known_word(word: str, rest: str, known_names: list[str]) -> bool:
-    """Could this word (followed by `rest` of the question) be something other than an unknown name?"""
-    lower = word.lower()
-    if lower in _MONTH_WORDS or re.fullmatch(r"q[1-4]", lower) or word[0].isdigit():
-        return True
-    if lower in _FOLLOWER_STOPWORDS or lower in _DIMENSION_WORDS:
-        return True
-    # A known name starts here ("Phone Max"), or the word is part of one ("StudioBook").
-    rest_lower = rest.lower()
+def _name_spans(question: str, known_names: list[str]) -> list[tuple[int, int]]:
+    """Where known names occur as whole words: "Northeast" does not contain "North"."""
+    spans = []
     for name in known_names:
-        if rest_lower.startswith(name.lower()) or lower in name.lower().split():
-            return True
-    return False
+        for match in re.finditer(rf"(?<!\w){re.escape(name)}(?!\w)", question, re.IGNORECASE):
+            spans.append(match.span())
+    return spans
+
+
+def _covered(position: int, spans: list[tuple[int, int]]) -> bool:
+    return any(start <= position < end for start, end in spans)
+
+
+def _is_understood_word(word: str) -> bool:
+    """Words that can never be a name: months, quarters, numbers, common words, rule vocabulary."""
+    lower = word.lower()
+    return bool(
+        lower in _MONTH_WORDS
+        or re.fullmatch(r"q[1-4]", lower)
+        or word[0].isdigit()
+        or lower in COMMON_WORDS
+        or lower in _DIMENSION_WORDS
+        or lower in _METRIC_WORDS
+    )
+
+
+def _candidate(question: str, start: int, word: str, known_names: list[str], spans: list[tuple[int, int]]) -> str | None:
+    """The unknown name starting at `start`, or None if the word is understood or a known name.
+
+    A word that belongs to a known multi-word name without the rest of it ("StudioBook 160")
+    is returned together with the number after it, so the Clarify names exactly what was typed.
+    """
+    if _covered(start, spans) or _is_understood_word(word):
+        return None
+    if detect_intent(word) or asks_bottom_ranking(word):
+        return None  # rule vocabulary such as "worst-selling" or "best", not a name
+    name_tokens = {token.lower() for name in known_names for token in name.split()}
+    if word.lower() in name_tokens:
+        after = re.match(r"\s+([0-9]+)\b", question[start + len(word):])
+        return f"{word}{after.group(0)}" if after else word
+    return word
 
 
 def find_unknown_names(question: str, known_names: list[str]) -> list[str]:
     """Words that look like a product/region name but are not in the data, in order of appearance.
 
-    Two heuristics, documented because they can miss things:
-      1. The word after "in", "for" or "from" (skipping one article like "the"), any case:
-         "revenue in europe" -> "europe". It is fine if it is a month, quarter, year, known
-         name, dimension word, relative-time word or one of a few stopwords.
-      2. A word containing an uppercase letter that is not the first word (unless it has an
-         uppercase letter inside it, like "iPhone") and is not a month, quarter, "I", part of
-         a known name or a word the rules already understand ("Top", "Revenue", "Compare").
+    Heuristics, documented because they can miss things:
+      1. The word after "in", "for", "from" or "during" (skipping one article like "the"), any
+         case: "revenue in europe" -> "europe", unless it is a common English word (COMMON_WORDS),
+         a month, quarter, year, dimension word or metric word.
+      2. The word directly before "region", "product" or "category": "the Pacific region".
+      3. A word containing an uppercase letter that is not the first word (unless it has an
+         uppercase letter inside it, like "iPhone"), and is not a word the rules understand.
+    Known names only match as whole words, so "Northeast" is unknown even though "North" exists.
     A lowercase unknown name elsewhere ("did europe do well") is not caught.
     """
+    spans = _name_spans(question, known_names)
     found: dict[str, int] = {}
-    for match in _PREPOSITION_FOLLOWER.finditer(question):
-        word = match[1]
-        if not _is_known_word(word, question[match.start(1):], known_names):
-            found.setdefault(word, match.start(1))
+    for pattern in (_NAME_FOLLOWING, _NAME_BEFORE_DIMENSION):
+        for match in pattern.finditer(question):
+            name = _candidate(question, match.start(1), match[1], known_names, spans)
+            if name:
+                found.setdefault(name, match.start(1))
     for index, match in enumerate(_WORD.finditer(question)):
         word = match[0].split("'")[0]  # "West's" -> "West", "I'm" -> "I"
         has_upper = any(c.isupper() for c in (word if index else word[1:]))
         if not has_upper or word in ("I", "GroundedBI"):
             continue
-        if _is_known_word(word, question[match.start():], known_names):
-            continue
         if detect_intent(word) or mentions_supported_metric(word) or find_unsupported_metric(word):
             continue  # a word the rules understand, just capitalized
-        found.setdefault(word, match.start())
+        name = _candidate(question, match.start(), word, known_names, spans)
+        if name and not any(name in other or other in name for other in found):
+            found.setdefault(name, match.start())
     return sorted(found, key=found.__getitem__)
 
 
+def unexplained_words(question: str, known_names: list[str]) -> list[str]:
+    """Words left after removing periods, known names, metric words and filler words.
+
+    The total intent ("Revenue in April 2026", "How much revenue came in during May 2026?") is
+    only used when this is empty: every content word was understood, so nothing is guessed.
+    """
+    text = _PERIOD_TOKEN.sub(" ", question)
+    for start, end in sorted(_name_spans(text, known_names), reverse=True):
+        text = text[:start] + " " + text[end:]
+    words = [w.lower().split("'")[0] for w in _TOKEN.findall(text)]
+    return [w for w in words if w and not w[0].isdigit() and w not in _FILLER_WORDS and w not in _METRIC_WORDS]
+
+
 def has_analytics_vocabulary(question: str, known_names: list[str]) -> bool:
-    """Does the question talk about anything this dataset covers at all?"""
+    """Does the question talk about anything this dataset covers, or about how business is going?"""
     return bool(
         mentions_supported_metric(question)
         or find_unsupported_metric(question)
         or detect_intent(question)
         or has_relative_time(question)
+        or _BUSINESS_PERFORMANCE.search(question)
         or _PERIOD_TOKEN.search(question)
         or any(word.lower() in _DIMENSION_WORDS for word in _WORD.findall(question))
         or find_names(question, known_names)

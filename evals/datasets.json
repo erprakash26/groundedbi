@@ -1,0 +1,17 @@
+{
+  "description": "Question files and their state. dev: may be used to find and fix problems. unseen: never inspected, so its score estimates real-world quality. seen: inspected at some point, so its score is reported but is no longer an unbiased estimate.",
+  "datasets": [
+    {
+      "split": "dev",
+      "file": "questions_dev.json",
+      "state": "dev",
+      "reason": "used for development"
+    },
+    {
+      "split": "heldout",
+      "file": "questions_heldout.json",
+      "state": "seen",
+      "reason": "inspected while diagnosing the baseline at commit 46aa0c4"
+    }
+  ]
+}

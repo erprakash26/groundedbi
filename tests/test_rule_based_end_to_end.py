@@ -165,10 +165,26 @@ def test_highlighted_top_driver_is_not_repeated(conn):
     assert result.answer.count("$243,979") == 1  # West's change appears once, in the driver sentence
 
 
-def test_name_that_cannot_be_highlighted_says_figures_are_not_filtered(conn):
-    result, _ = ask(conn, "How did StudioBook 16 do in March vs February?")
-    assert calls(result)[1][0] == "compare_periods"
-    assert "I can't filter them to StudioBook 16" in result.answer
+def test_named_comparison_answers_with_the_items_own_row_not_company_totals(conn):
+    # compare_periods would return company totals: a confident wrong answer for a named product.
+    result, results = ask(conn, "How did StudioBook 16 do in March vs February?")
+    assert calls(result)[1] == (
+        "get_change_drivers",
+        {**FEB_MAR, "dimension": "product", "limit": 20},
+    )
+    row = next(r for r in results[1]["data"]["rows"] if r["label"] == "StudioBook 16")
+    assert result.answer == (
+        f"StudioBook 16 revenue fell by {row['change_abs_display']}, from {row['revenue_a_display']} in February 2026"
+        f" to {row['revenue_b_display']} in March 2026. That is {row['share_of_total_change']}% of the total change"
+        f" in revenue ({results[1]['data']['total_change_display']})."
+    )
+    assert "$1,825,822" not in result.answer  # February's company total is not presented as the product's
+
+
+def test_monthly_question_naming_a_region_says_figures_are_not_filtered(conn):
+    result, _ = ask(conn, "Show monthly revenue for West in Q1 2026")
+    assert calls(result)[1][0] == "get_revenue_by_month"
+    assert "I can't filter them to West" in result.answer
 
 
 def test_month_outside_the_data_is_reported_not_guessed(conn):

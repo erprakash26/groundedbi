@@ -27,11 +27,23 @@ from evals.scoring import aggregate, aggregate_by, score_question, validate_ques
 from scripts.seed_data import seed_database
 
 EVALS_DIR = Path(__file__).resolve().parent
-QUESTION_FILES = {"dev": EVALS_DIR / "questions_dev.json", "heldout": EVALS_DIR / "questions_heldout.json"}
+DATASETS_FILE = EVALS_DIR / "datasets.json"
 RESULTS_DIR = EVALS_DIR / "results"
 SEED = 42
 SEED_START = "2026-01"
 SEED_MONTHS = 6
+
+
+def load_datasets(path: Path = DATASETS_FILE) -> dict[str, dict[str, Any]]:
+    """split -> {"file": Path, "state": "dev"/"unseen"/"seen", "reason": str}, from evals/datasets.json."""
+    entries = json.loads(path.read_text(encoding="utf-8"))["datasets"]
+    return {
+        e["split"]: {"file": path.parent / e["file"], "state": e["state"], "reason": e["reason"]} for e in entries
+    }
+
+
+DATASETS = load_datasets()
+QUESTION_FILES = {split: info["file"] for split, info in DATASETS.items()}
 
 
 def load_questions(path: Path) -> list[dict[str, Any]]:
@@ -78,8 +90,11 @@ def run_questions(questions_by_split: dict[str, list[dict[str, Any]]]) -> list[d
     return scored
 
 
-def build_report(scored: list[dict[str, Any]], splits: list[str]) -> dict[str, Any]:
+def build_report(
+    scored: list[dict[str, Any]], splits: list[str], states: dict[str, dict[str, str]] | None = None
+) -> dict[str, Any]:
     by_split = {split: [s for s in scored if s["split"] == split] for split in splits}
+    states = states or {}
     return {
         "meta": {
             **git_info(),
@@ -88,6 +103,8 @@ def build_report(scored: list[dict[str, Any]], splits: list[str]) -> dict[str, A
             "provider": RuleBasedProvider.name,
             "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "splits": splits,
+            # Shown next to every split, so a "seen" held-out score is never presented as unseen.
+            "dataset_states": {split: states.get(split, {"state": "unknown", "reason": ""}) for split in splits},
         },
         "metrics": {
             split: {"overall": aggregate(items), "by_category": aggregate_by(items, "category")}
@@ -130,6 +147,11 @@ def _json_inline(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _state_label(meta: dict[str, Any], split: str) -> str:
+    info = meta["dataset_states"][split]
+    return f"state: {info['state']}" + (f", {info['reason']}" if info["state"] == "seen" else "")
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     meta = report["meta"]
     dirty = " (uncommitted changes)" if meta["dirty"] else ""
@@ -147,7 +169,13 @@ def render_markdown(report: dict[str, Any]) -> str:
     ]
     for split, metrics in report["metrics"].items():
         gate = "gated by --fail-under" if split == "dev" else "measured only, never gated"
-        lines += ["", f"## Split: {split} ({gate})", "", _TABLE_HEADER, _table_row("**overall**", metrics["overall"])]
+        lines += [
+            "",
+            f"## Split: {split} ({_state_label(meta, split)}; {gate})",
+            "",
+            _TABLE_HEADER,
+            _table_row("**overall**", metrics["overall"]),
+        ]
         lines += [_table_row(category, m) for category, m in metrics["by_category"].items()]
 
     failures = [s for s in report["questions"] if not s["passed"]]
@@ -185,7 +213,7 @@ def console_summary(report: dict[str, Any]) -> str:
         lat = m["latency_ms"]
         out += [
             "",
-            f"[{split}] {m['questions']} questions",
+            f"[{split}] {m['questions']} questions ({_state_label(meta, split)})",
             f"  pass            {_fmt_rate(m['pass'])}",
             f"  status          {_fmt_rate(m['status_accuracy'])}",
             f"  tools           {_fmt_rate(m['tool_accuracy'])}",
@@ -219,7 +247,8 @@ def run(
     files = question_files or QUESTION_FILES
     splits = list(files) if split == "all" else [split]
     questions_by_split = {name: load_questions(files[name]) for name in splits}
-    report = build_report(run_questions(questions_by_split), splits)
+    states = {name: {"state": info["state"], "reason": info["reason"]} for name, info in DATASETS.items()}
+    report = build_report(run_questions(questions_by_split), splits, states)
 
     results_dir.mkdir(parents=True, exist_ok=True)
     (results_dir / "latest.json").write_text(

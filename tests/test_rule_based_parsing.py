@@ -400,3 +400,207 @@ def test_tool_error_answer_has_the_code_and_no_numbers():
     failed = {"ok": False, "tool": "get_top_products", "error": {"code": "tool_timeout"}, "data": None}
     answer = write_answer(plan, [failed])
     assert answer == 'I couldn\'t complete this request: the get_top_products tool returned the error "tool_timeout".'
+
+
+# --- improvement round: general rules ------------------------------------------------------
+
+from app.llm.base import Clarify  # noqa: E402
+from app.llm.question_parser import (  # noqa: E402
+    COMMON_WORDS,
+    asks_bottom_ranking,
+    asks_single_product,
+    mentions_supported_metric,
+    ranked_dimension,
+    unexplained_words,
+)
+from app.llm.rule_based import triage  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("question", "intent"),
+    [
+        ("Explain what happened in May 2026", "change"),
+        ("How did revenue move between April and May?", "change"),
+        ("How did sales go in Q2?", "change"),
+        ("How did StudioBook 16 do in March vs February?", "compare"),  # "do" is not change vocabulary
+        ("Which product sold best in May?", "top"),
+        ("Which region had the highest revenue?", "top"),
+        ("Leading products in Q1", "top"),
+        ("Most popular products", "top"),
+        ("What drove most of the drop in March?", "change"),  # change still wins over ranking words
+    ],
+)
+def test_new_intent_vocabulary(question, intent):
+    assert detect_intent(question) == intent
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("Which product sold best in May?", True),
+        ("What product was the leading seller?", True),
+        ("Which products sold best?", False),
+        ("Top 3 products", False),
+    ],
+)
+def test_asks_single_product(question, expected):
+    assert asks_single_product(question) is expected
+
+
+def test_ranked_dimension():
+    assert ranked_dimension("Which region had the highest revenue?") == "region"
+    assert ranked_dimension("Best category in Q1") == "category"
+    assert ranked_dimension("Top products in Q1") is None
+
+
+@pytest.mark.parametrize("question", ["worst-selling product", "lowest revenue region", "bottom 3 products", "least sold"])
+def test_bottom_rankings_are_detected(question):
+    assert asks_bottom_ranking(question)
+
+
+@pytest.mark.parametrize(
+    ("question", "unknown"),
+    [
+        ("How much revenue came in during May 2026?", []),  # "during" is a common word
+        ("revenue for us in March", []),
+        ("Revenue for the Pacific region in March", ["Pacific"]),  # word before "region"
+        ("revenue for the pacific region in march", ["pacific"]),  # any case
+        ("Which region had the highest revenue?", []),  # determiner before "region"
+        ("Most popular products in Q2", []),  # common adjective before "products"
+        ("Sales in the Southwest region in Q1 2026", ["Southwest"]),  # whole words: not "South"
+        ("Show me sales for the Northwest", ["Northwest"]),
+        ("Revenue in the North in March", []),
+        ("Why did StudioBook 160 sales drop in March?", ["StudioBook 160"]),  # not "StudioBook 16"
+        ("Why did StudioBook 16 sales drop in March?", []),
+        ("How did Phone Max do in April vs May?", []),  # "Max" is inside a matched name
+        ("Revenue during the summer", ["summer"]),
+    ],
+)
+def test_unknown_names_whole_words_and_common_words(question, unknown):
+    assert find_unknown_names(question, KNOWN) == unknown
+
+
+def test_common_words_list_is_small_and_covers_the_documented_groups():
+    assert {"during", "the", "each", "which", "bring", "came", "overall", "us"} <= COMMON_WORDS
+    assert len(COMMON_WORDS) < 150  # a short documented list, not a dictionary
+    assert not {"west", "north", "pacific", "europe"} & COMMON_WORDS
+
+
+@pytest.mark.parametrize(
+    ("question", "leftover"),
+    [
+        ("Revenue in April 2026", []),
+        ("revenue in the west in march", []),
+        ("How much revenue came in during May 2026?", []),
+        ("Write a summary of revenue in Q2 2026", []),
+        ("How did revenue look in May 2026?", ["look"]),
+        ("sales vibes for March", ["vibes"]),
+    ],
+)
+def test_unexplained_words(question, leftover):
+    assert unexplained_words(question, KNOWN) == leftover
+
+
+@pytest.mark.parametrize(
+    ("question", "reason"),
+    [
+        ("Write a poem about our March revenue", "creative"),
+        ("Tell me a joke about sales", "creative"),
+        ("Compose a song for Q2 2026", "creative"),
+        ("Write a summary of Q1 revenue", None),  # a summary is a data request, not creative
+        ("How many orders did we get in March?", "metric"),
+        ("What's our AOV for Q1?", "metric"),
+        ("Average order value by region", "metric"),
+        ("Average basket size in June", "metric"),
+        ("Revenue and number of orders in March", None),  # mixed: a Clarify, decided later
+    ],
+)
+def test_creative_and_order_metrics_out_of_scope(question, reason):
+    assert detect_out_of_scope(question) == reason
+
+
+def test_average_order_value_is_named_before_plain_orders():
+    assert find_unsupported_metric("average order value in Q1") == "Average order value"
+    assert find_unsupported_metric("orders in Q1") == "Order data"
+    assert not mentions_supported_metric("orders in Q1")
+
+
+@pytest.mark.parametrize("question", ["How's business going?", "Are things going well for us?", "How is performance?"])
+def test_business_performance_counts_as_analytics_vocabulary(question):
+    assert has_analytics_vocabulary(question, KNOWN)
+
+
+def test_no_intent_clarify_names_what_was_understood():
+    decision = triage("How did revenue look in May 2026?", OVERVIEW)
+    assert isinstance(decision, Clarify)
+    assert decision.question.startswith("Do you want May 2026's total revenue, or what drove its change from April 2026?")
+
+
+def test_no_intent_without_any_understood_piece_gets_generic_clarify():
+    decision = triage("How's business going?", OVERVIEW)
+    assert isinstance(decision, Clarify) and "What would you like to know?" in decision.question
+
+
+def test_bottom_ranking_clarify_offers_top_n():
+    decision = triage("What was the worst-selling product in March 2026?", OVERVIEW)
+    assert isinstance(decision, Clarify)
+    assert "Top 5 products in March 2026" in decision.question
+
+
+def test_plan_singular_product_is_limit_1():
+    plan = plan_question("Which product was the leading seller in May 2026?", OVERVIEW)
+    assert calls(plan) == [("get_top_products", {"start_month": "2026-05", "end_month": "2026-05", "limit": 1})]
+
+
+def test_plan_region_ranking_uses_the_breakdown():
+    plan = plan_question("Which region had the highest revenue in Q1 2026?", OVERVIEW)
+    assert plan.intent == "rank_dimension"
+    assert calls(plan) == [
+        ("get_revenue_breakdown", {"start_month": "2026-01", "end_month": "2026-03", "dimension": "region"})
+    ]
+
+
+def test_plan_named_comparison_uses_the_items_dimension():
+    plan = plan_question("Compare East revenue in January and February 2026", OVERVIEW)
+    assert plan.intent == "named_change" and plan.highlight == "East"
+    assert calls(plan)[0][1]["dimension"] == "region" and calls(plan)[0][1]["limit"] == 20
+
+
+# --- ranking ties (constructed data) -----------------------------------------------------------
+
+
+def _breakdown_result(rows):
+    return {
+        "ok": True, "tool": "get_revenue_breakdown",
+        "data": {"period": {"start_month": "2026-01", "end_month": "2026-03"}, "dimension": "region", "rows": rows},
+    }  # fmt: skip
+
+
+def _row(label, cents, display):
+    return {"label": label, "revenue_cents": cents, "revenue_display": display, "units": 1}
+
+
+def test_rank_names_a_single_winner_only_when_strictly_ahead():
+    rows = [_row("West", 300, "$3"), _row("East", 200, "$2")]
+    answer = write_answer(Plan("rank_dimension", ()), [_breakdown_result(rows)])
+    assert answer.startswith("West had the highest revenue in Q1 2026 (January to March): $3.")
+
+
+def test_rank_tie_names_all_tied_items():
+    rows = [_row("East", 300, "$3"), _row("West", 300, "$3"), _row("North", 100, "$1")]
+    answer = write_answer(Plan("rank_dimension", ()), [_breakdown_result(rows)])
+    assert answer.startswith("East and West tied for the highest revenue in Q1 2026 (January to March): $3 each.")
+    assert "had the highest revenue" not in answer
+
+
+def test_rank_three_way_tie():
+    rows = [_row("East", 300, "$3"), _row("North", 300, "$3"), _row("West", 300, "$3")]
+    answer = write_answer(Plan("rank_dimension", ()), [_breakdown_result(rows)])
+    assert "East, North and West tied for the highest revenue" in answer
+
+
+def test_rank_tie_uses_exact_cents_not_rounded_displays():
+    # Both display "$3" after rounding, but 300 > 299 cents: West is strictly ahead.
+    rows = [_row("West", 300, "$3"), _row("East", 299, "$3")]
+    answer = write_answer(Plan("rank_dimension", ()), [_breakdown_result(rows)])
+    assert answer.startswith("West had the highest revenue")

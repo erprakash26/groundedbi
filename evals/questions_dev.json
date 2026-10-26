@@ -416,6 +416,364 @@
       ],
       "must_not_contain": [],
       "notes": "A category name steers the dimension. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-22",
+      "split": "dev",
+      "category": "clarify_no_intent",
+      "question": "How did revenue look in May 2026?",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [
+        "May 2026",
+        "total revenue",
+        "April 2026"
+      ],
+      "must_not_contain": [],
+      "notes": "'look' is not understood: ask, naming what was understood (May 2026, revenue), instead of guessing an intent."
+    },
+    {
+      "id": "dev-23",
+      "split": "dev",
+      "category": "change_drivers",
+      "question": "Explain what happened in May 2026",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-04",
+        "period_a_end": "2026-04",
+        "period_b_start": "2026-05",
+        "period_b_end": "2026-05"
+      },
+      "must_contain": [
+        "$28,501",
+        "1.6%"
+      ],
+      "must_not_contain": [],
+      "notes": "'what happened' is a change question: May vs April. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-24",
+      "split": "dev",
+      "category": "change_drivers",
+      "question": "How did revenue move between April and May 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-04",
+        "period_a_end": "2026-04",
+        "period_b_start": "2026-05",
+        "period_b_end": "2026-05"
+      },
+      "must_contain": [
+        "$28,501",
+        "StudioBook 16 / North"
+      ],
+      "must_not_contain": [],
+      "notes": "'how did ... move' is a change question. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-25",
+      "split": "dev",
+      "category": "ranking_dimension",
+      "question": "Which region had the highest revenue in Q1 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_revenue_breakdown"
+      ],
+      "expected_arguments": {
+        "dimension": "region",
+        "start_month": "2026-01",
+        "end_month": "2026-03"
+      },
+      "must_contain": [
+        "West had the highest revenue",
+        "$1,734,627"
+      ],
+      "must_not_contain": [],
+      "notes": "Ranking over regions uses the breakdown (sorted by revenue). Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-26",
+      "split": "dev",
+      "category": "top_n",
+      "question": "Which product was the leading seller in May 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_top_products"
+      ],
+      "expected_arguments": {
+        "start_month": "2026-05",
+        "end_month": "2026-05",
+        "limit": 1
+      },
+      "must_contain": [
+        "StudioBook 16",
+        "$517,293"
+      ],
+      "must_not_contain": [
+        "Phone Max"
+      ],
+      "notes": "Singular 'Which product' means limit 1. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-27",
+      "split": "dev",
+      "category": "top_n",
+      "question": "Most popular products in Q2 2026",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_top_products"
+      ],
+      "expected_arguments": {
+        "start_month": "2026-04",
+        "end_month": "2026-06",
+        "limit": 5
+      },
+      "must_contain": [
+        "StudioBook 16",
+        "$1,556,877"
+      ],
+      "must_not_contain": [],
+      "notes": "'most' is ranking vocabulary; plural means the default top 5. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-28",
+      "split": "dev",
+      "category": "clarify_unsupported_ranking",
+      "question": "What was the worst-selling product in March 2026?",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [
+        "Top 5 products in March 2026"
+      ],
+      "must_not_contain": [],
+      "notes": "No tool ranks from the bottom: ask and offer top N instead of answering something else. The label requires the offered example in full: a bare 'top' also matched inside 'Laptops'."
+    },
+    {
+      "id": "dev-29",
+      "split": "dev",
+      "category": "monthly",
+      "question": "How much revenue came in during May 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_revenue_by_month"
+      ],
+      "expected_arguments": {
+        "start_month": "2026-05",
+        "end_month": "2026-05"
+      },
+      "must_contain": [
+        "$1,852,189"
+      ],
+      "must_not_contain": [],
+      "notes": "'during' after 'in' is a common word, not a name. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-30",
+      "split": "dev",
+      "category": "clarify_unknown_name",
+      "question": "Revenue for the Pacific region in March",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [
+        "Pacific",
+        "East, North, South and West"
+      ],
+      "must_not_contain": [],
+      "notes": "The word before 'region' is a name candidate."
+    },
+    {
+      "id": "dev-31",
+      "split": "dev",
+      "category": "clarify_unknown_name",
+      "question": "Sales in the Southwest region in Q1 2026",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [
+        "Southwest"
+      ],
+      "must_not_contain": [],
+      "notes": "Whole-word matching: Southwest must not be read as South."
+    },
+    {
+      "id": "dev-32",
+      "split": "dev",
+      "category": "clarify_unknown_name",
+      "question": "Why did StudioBook 160 sales drop in March?",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [
+        "StudioBook 160"
+      ],
+      "must_not_contain": [],
+      "notes": "Whole-word matching with digits: StudioBook 160 is not StudioBook 16."
+    },
+    {
+      "id": "dev-33",
+      "split": "dev",
+      "category": "clarify_vague",
+      "question": "How's business going?",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [
+        "For example"
+      ],
+      "must_not_contain": [],
+      "notes": "Business performance without an analytics intent: ask, don't refuse."
+    },
+    {
+      "id": "dev-34",
+      "split": "dev",
+      "category": "clarify_vague",
+      "question": "Are things going well for us?",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [
+        "For example"
+      ],
+      "must_not_contain": [],
+      "notes": "Business performance without an analytics intent: ask, don't refuse."
+    },
+    {
+      "id": "dev-35",
+      "split": "dev",
+      "category": "out_of_scope_metric",
+      "question": "How many orders did we get in March 2026?",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": [
+        "$"
+      ],
+      "notes": "Orders are an unsupported metric here; no supported metric is mentioned."
+    },
+    {
+      "id": "dev-36",
+      "split": "dev",
+      "category": "out_of_scope_metric",
+      "question": "What's our AOV for Q1?",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": [
+        "$"
+      ],
+      "notes": "AOV (average order value) is not in the data."
+    },
+    {
+      "id": "dev-37",
+      "split": "dev",
+      "category": "out_of_scope_metric",
+      "question": "Average basket size by region in June 2026",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": [
+        "$"
+      ],
+      "notes": "Basket size is not in the data, even with a dimension and a period."
+    },
+    {
+      "id": "dev-38",
+      "split": "dev",
+      "category": "out_of_scope_creative",
+      "question": "Write a haiku about June 2026 revenue",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": [
+        "$"
+      ],
+      "notes": "Creative requests are refused even when they mention a metric and a period."
+    },
+    {
+      "id": "dev-39",
+      "split": "dev",
+      "category": "monthly",
+      "question": "Write a summary of revenue in Q2 2026",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_revenue_by_month"
+      ],
+      "expected_arguments": {
+        "start_month": "2026-04",
+        "end_month": "2026-06"
+      },
+      "must_contain": [
+        "$1,823,688",
+        "$1,852,189",
+        "$1,886,478"
+      ],
+      "must_not_contain": [],
+      "notes": "A summary is not a creative request. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-40",
+      "split": "dev",
+      "category": "named_comparison",
+      "question": "How did Phone Max do in April vs May 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-04",
+        "period_a_end": "2026-04",
+        "period_b_start": "2026-05",
+        "period_b_end": "2026-05",
+        "dimension": "product"
+      },
+      "must_contain": [
+        "Phone Max",
+        "$302,225",
+        "$306,621",
+        "$4,396",
+        "15.4%"
+      ],
+      "must_not_contain": [],
+      "notes": "A comparison naming a product answers with that product's row, not company totals. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-41",
+      "split": "dev",
+      "category": "named_comparison",
+      "question": "Compare East revenue in January and February 2026",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-01",
+        "period_a_end": "2026-01",
+        "period_b_start": "2026-02",
+        "period_b_end": "2026-02",
+        "dimension": "region"
+      },
+      "must_contain": [
+        "East",
+        "$434,101",
+        "$444,333",
+        "$10,232",
+        "22.4%"
+      ],
+      "must_not_contain": [],
+      "notes": "A comparison naming a region answers with that region's row, not company totals. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
     }
   ]
 }
