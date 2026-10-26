@@ -36,11 +36,15 @@ _MONTH_ALTERNATION = "|".join(sorted(_MONTH_WORDS, key=len, reverse=True))
 _PERIOD_TOKEN = re.compile(
     r"(?P<iso>\b(?P<iso_year>[0-9]{4})-(?P<iso_month>0[1-9]|1[0-2])\b)"
     r"|(?P<quarter>\bq(?P<q>[1-4])\b(?:\s+(?P<q_year>[0-9]{4})\b)?)"
+    # "first quarter", "2nd quarter of 2026": the same as Q1..Q4.
+    r"|(?P<ordinal_quarter>\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\b"
+    r"(?:\s+(?:of\s+)?(?P<oq_year>[0-9]{4})\b)?)"
     rf"|(?P<month>\b(?P<m>{_MONTH_ALTERNATION})\b\.?(?:,?\s+(?P<m_year>[0-9]{{4}})\b)?)"
     r"|(?P<year>\b(?:19|20)[0-9]{2}\b)",
     re.IGNORECASE,
 )
 
+_ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "1st": 1, "2nd": 2, "3rd": 3, "4th": 4}
 DEFAULT_TOP_N = 5
 _NUMBER_WORDS = {
     "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -117,9 +121,11 @@ def parse_periods(question: str, last_data_month: str) -> list[MonthSpan]:
             year = int(match["iso_year"])
             mentions.append((int(match["iso_month"]), 1, year))
             years.append(year)
-        elif match["quarter"]:
-            year = int(match["q_year"]) if match["q_year"] else None
-            mentions.append((int(match["q"]) * 3 - 2, 3, year))
+        elif match["quarter"] or match["ordinal_quarter"]:
+            number = int(match["q"]) if match["quarter"] else _ORDINALS[match["ordinal"].lower()]
+            raw_year = match["q_year"] if match["quarter"] else match["oq_year"]
+            year = int(raw_year) if raw_year else None
+            mentions.append((number * 3 - 2, 3, year))
             years += [year] if year else []
         elif match["month"]:
             word = match["m"].lower()
@@ -197,6 +203,11 @@ _FORECAST = re.compile(
     r"|\bnext\s+(month|quarter|year|week)\b",
     re.IGNORECASE,
 )
+# A command to change data, with or without SQL syntax: "Remove the February sales records".
+# Only as the first word, and not as a noun: "Drop in revenue during March" is a question.
+_DATA_CHANGE_COMMAND = re.compile(
+    r"^\s*(delete|drop|update|insert|remove|truncate|alter)\b(?!\s+(in|of|on|off)\b)", re.IGNORECASE
+)
 # Creative writing is never a data question, even when it mentions a metric or a period.
 # "summary", "overview" and "report" are deliberately NOT here: those are requests for data.
 _CREATIVE = re.compile(r"\b(poems?|songs?|stor(y|ies)|jokes?|haikus?|essays?|limericks?|lyrics|rap|sonnets?)\b", re.IGNORECASE)
@@ -261,6 +272,8 @@ COMMON_WORDS = {
     "highest", "most", "single", "individual", "specific", "other", "same", "one",
     # relative-time words (handled by their own Clarify rule)
     "last", "past", "current", "recent", "recently",
+    # parts of an ordinal quarter ("during the 3rd quarter"), which is parsed as a period
+    "first", "second", "third", "fourth", "quarter", "quarters",
 }  # fmt: skip
 # Words that carry no meaning of their own in an amount question ("How much revenue came in
 # during May 2026?"). The total intent is only used when every other word is understood.
@@ -280,9 +293,12 @@ _TOKEN = re.compile(r"[^\W_][\w&'-]*")
 def detect_out_of_scope(question: str) -> str | None:
     """Questions the data can NEVER answer, decided from the text alone (no data needed).
 
-    Returns "instructions", "creative", "forecast" or "metric", or None. "metric" only when an
-    unsupported metric is asked for and no supported one: "revenue and profit" is a Clarify.
+    Returns "data_change", "instructions", "creative", "forecast" or "metric", or None.
+    "metric" only when an unsupported metric is asked for and no supported one: "revenue and
+    profit" is a Clarify. A data-changing command is checked before every other rule.
     """
+    if _DATA_CHANGE_COMMAND.search(question):
+        return "data_change"
     if _INSTRUCTION_LIKE.search(question):
         return "instructions"
     if _CREATIVE.search(question):

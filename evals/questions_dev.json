@@ -774,6 +774,211 @@
       ],
       "must_not_contain": [],
       "notes": "A comparison naming a region answers with that region's row, not company totals. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-42",
+      "split": "dev",
+      "category": "named_change",
+      "question": "Why did UltraBook 14 revenue go up from April to May 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-04",
+        "period_a_end": "2026-04",
+        "period_b_start": "2026-05",
+        "period_b_end": "2026-05",
+        "dimension": "product"
+      },
+      "must_contain": [
+        "UltraBook 14 revenue rose by $2,398",
+        "$290,158",
+        "$292,556",
+        "8.4%"
+      ],
+      "must_not_contain": [],
+      "notes": "A change question naming a product leads with that product's own figures. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-43",
+      "split": "dev",
+      "category": "named_change",
+      "question": "What drove the change for the South region between January and February 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-01",
+        "period_a_end": "2026-01",
+        "period_b_start": "2026-02",
+        "period_b_end": "2026-02",
+        "dimension": "region"
+      },
+      "must_contain": [
+        "South revenue rose by $7,891",
+        "$298,904",
+        "$306,795",
+        "17.3%"
+      ],
+      "must_not_contain": [],
+      "notes": "A change question naming a region leads with that region's own figures. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-44",
+      "split": "dev",
+      "category": "named_change",
+      "question": "Did Audio revenue increase from May to June 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-05",
+        "period_a_end": "2026-05",
+        "period_b_start": "2026-06",
+        "period_b_end": "2026-06",
+        "dimension": "category"
+      },
+      "must_contain": [
+        "Audio revenue rose by $3,435",
+        "$225,465",
+        "$228,900",
+        "10.0%"
+      ],
+      "must_not_contain": [],
+      "notes": "A change question naming a category leads with that category's own figures. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-45",
+      "split": "dev",
+      "category": "ordinal_quarter",
+      "question": "Revenue by region in the 2nd quarter of 2026",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_revenue_breakdown"
+      ],
+      "expected_arguments": {
+        "dimension": "region",
+        "start_month": "2026-04",
+        "end_month": "2026-06"
+      },
+      "must_contain": [
+        "Q2 2026 (April to June)",
+        "$2,021,557"
+      ],
+      "must_not_contain": [],
+      "notes": "'2nd quarter of 2026' is Q2 2026. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-46",
+      "split": "dev",
+      "category": "ordinal_quarter",
+      "question": "How did revenue change from the 1st quarter to the 2nd quarter of 2026?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-01",
+        "period_a_end": "2026-03",
+        "period_b_start": "2026-04",
+        "period_b_end": "2026-06"
+      },
+      "must_contain": [
+        "$444,554",
+        "Q1 2026 (January to March)"
+      ],
+      "must_not_contain": [],
+      "notes": "Ordinal quarters with digits. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
+    },
+    {
+      "id": "dev-47",
+      "split": "dev",
+      "category": "ordinal_quarter",
+      "question": "Top 3 products in the fourth quarter of 2025",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_top_products"
+      ],
+      "expected_arguments": {
+        "start_month": "2025-10",
+        "end_month": "2025-12",
+        "limit": 3
+      },
+      "must_contain": [
+        "Q4 2025 (October to December)",
+        "There is no data for October 2025"
+      ],
+      "must_not_contain": [
+        "$"
+      ],
+      "notes": "An ordinal quarter in words, entirely before the data: say so, no figures."
+    },
+    {
+      "id": "dev-48",
+      "split": "dev",
+      "category": "out_of_scope_data_change",
+      "question": "Remove the February sales records",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": [
+        "$"
+      ],
+      "notes": "Imperative data-changing verb at the start, no SQL syntax."
+    },
+    {
+      "id": "dev-49",
+      "split": "dev",
+      "category": "out_of_scope_data_change",
+      "question": "Update March revenue to $2,000,000",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": [
+        "$"
+      ],
+      "notes": "Imperative data-changing verb; the answer must not echo the amount."
+    },
+    {
+      "id": "dev-50",
+      "split": "dev",
+      "category": "out_of_scope_data_change",
+      "question": "Drop all products from the West region",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": [
+        "$"
+      ],
+      "notes": "Imperative 'drop' at the start is a data change, not a revenue drop."
+    },
+    {
+      "id": "dev-51",
+      "split": "dev",
+      "category": "change_drivers",
+      "question": "Drop in revenue during March: what caused it?",
+      "expected_status": "answered",
+      "expected_tools": [
+        "get_change_drivers"
+      ],
+      "expected_arguments": {
+        "period_a_start": "2026-02",
+        "period_a_end": "2026-02",
+        "period_b_start": "2026-03",
+        "period_b_end": "2026-03"
+      },
+      "must_contain": [
+        "$314,032",
+        "StudioBook 16 / West"
+      ],
+      "must_not_contain": [],
+      "notes": "Control: 'Drop in ...' is a noun, not a command, so this must still be answered. Expected values from app.services.analytics on a fresh seed-42 database (verify with python -m evals.check_expectations)."
     }
   ]
 }

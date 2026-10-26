@@ -158,11 +158,13 @@ def test_change_question_without_period_compares_latest_month_with_previous(conn
     assert "latest month" in result.answer
 
 
-def test_highlighted_top_driver_is_not_repeated(conn):
+def test_change_question_naming_a_region_leads_with_that_region(conn):
     result, _ = ask(conn, "Why did West revenue drop in March?")
     assert result.tool_calls[1].arguments["dimension"] == "region"
-    assert "This shows all regions with West highlighted; it is not filtered to West." in result.answer
-    assert result.answer.count("$243,979") == 1  # West's change appears once, in the driver sentence
+    assert result.answer.startswith("West revenue fell by $243,979, from $665,161 in February 2026 to $421,182 in March 2026.")
+    assert result.answer.count("$243,979") == 1  # West's change is stated once
+    # The company total follows in one sentence, after the region's own figures.
+    assert result.answer.endswith("Across all regions, revenue fell by $314,032 (17.2%).")
 
 
 def test_named_comparison_answers_with_the_items_own_row_not_company_totals(conn):
@@ -176,7 +178,8 @@ def test_named_comparison_answers_with_the_items_own_row_not_company_totals(conn
     assert result.answer == (
         f"StudioBook 16 revenue fell by {row['change_abs_display']}, from {row['revenue_a_display']} in February 2026"
         f" to {row['revenue_b_display']} in March 2026. That is {row['share_of_total_change']}% of the total change"
-        f" in revenue ({results[1]['data']['total_change_display']})."
+        f" in revenue. Across all products, revenue fell by {results[1]['data']['total_change_abs_display']}"
+        f" ({results[1]['data']['pct_change_abs']}%)."
     )
     assert "$1,825,822" not in result.answer  # February's company total is not presented as the product's
 

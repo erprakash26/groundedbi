@@ -68,6 +68,7 @@ CAPABILITIES = (
 )
 NO_DATA_ANSWER = "There is no sales data in the database yet, so I can't answer questions about it."
 _OUT_OF_SCOPE_REASONS = {
+    "data_change": "I can't change, delete or add data; I can only read the sales data.",
     "instructions": "I can't follow instructions or run database commands; I only answer questions about the sales data.",
     "creative": "I can't write poems, stories or other creative pieces; I only answer questions about the sales data.",
     "forecast": "I can't make forecasts or predictions; I only report what is in the historical sales data.",
@@ -204,9 +205,10 @@ def plan_question(question: str, overview: dict[str, Any]) -> Plan | None:
             b = MonthSpan(last_month, last_month)
             a = previous_span(b)
             note = "No period was given, so this compares the latest month in the data with the month before."
-        if intent == "compare" and highlight:
-            # compare_periods returns company totals, which would answer a different question.
-            # The named item's own row comes from the drivers by its dimension (all rows fit in 20).
+        if highlight:
+            # A change or comparison about one named item is answered with that item's own row.
+            # compare_periods (or the company headline of the drivers) answers a different
+            # question. All rows of one dimension fit in 20, so the item's row is always there.
             intent = "named_change"
             args = {**_two_period_args(a, b), "dimension": kind, "limit": MAX_TOP_N}
             calls = (PlannedCall("get_change_drivers", args),)
@@ -429,10 +431,16 @@ def _named_change_answer(plan: Plan, data: dict[str, Any]) -> str:
         row["revenue_a_display"], row["revenue_b_display"], a, b, plan.claimed, subject=f"{name} revenue",
     )  # fmt: skip
     if row["share_of_total_change"] is not None:
-        text += (
-            f" That is {row['share_of_total_change']}% of the total change in revenue"
-            f" ({data['total_change_display']})."
-        )
+        text += f" That is {row['share_of_total_change']}% of the total change in revenue."
+    # The company total follows in one sentence, after the item's own figures.
+    total = data["total_change_cents"]
+    plural = _DIMENSION_PLURAL[data["dimension"]]
+    if total == 0:
+        text += f" Across all {plural}, revenue was unchanged."
+    else:
+        verb = "rose" if total > 0 else "fell"
+        pct = f" ({data['pct_change_abs']}%)" if data["pct_change_abs"] is not None else ""
+        text += f" Across all {plural}, revenue {verb} by {data['total_change_abs_display']}{pct}."
     return text
 
 

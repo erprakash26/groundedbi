@@ -604,3 +604,81 @@ def test_rank_tie_uses_exact_cents_not_rounded_displays():
     rows = [_row("West", 300, "$3"), _row("East", 299, "$3")]
     answer = write_answer(Plan("rank_dimension", ()), [_breakdown_result(rows)])
     assert answer.startswith("West had the highest revenue")
+
+
+# --- fix round 2: ordinal quarters, data-changing commands, named items --------------------
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("revenue in the third quarter of 2025", [MonthSpan("2025-07", "2025-09")]),
+        ("revenue in the 4th quarter 2025", [MonthSpan("2025-10", "2025-12")]),
+        ("from the 1st quarter to the 2nd quarter of 2026", [MonthSpan("2026-01", "2026-03"), MonthSpan("2026-04", "2026-06")]),
+        ("revenue in the second quarter", [MonthSpan("2026-04", "2026-06")]),  # no year: resolved against the data
+        ("Q1 2026 versus the 2nd quarter", [MonthSpan("2026-01", "2026-03"), MonthSpan("2026-04", "2026-06")]),
+    ],
+)
+def test_ordinal_quarters_are_quarters(question, expected):
+    assert parse_periods(question, LAST) == expected
+
+
+def test_ordinal_quarter_words_are_not_unknown_names():
+    assert find_unknown_names("Revenue by region in the third quarter of 2025", KNOWN) == []
+    assert unexplained_words("Revenue in the second quarter of 2026", KNOWN) == []
+
+
+@pytest.mark.parametrize(
+    ("question", "reason"),
+    [
+        ("Remove the February sales records", "data_change"),
+        ("delete all sales from March", "data_change"),
+        ("  Update March revenue to 5", "data_change"),
+        ("Insert a new product", "data_change"),
+        ("TRUNCATE products", "data_change"),
+        ("Alter the West region totals", "data_change"),
+        ("Drop all products from the West region", "data_change"),
+        ("Drop in revenue during March: what caused it?", None),  # a noun, not a command
+        ("Why did revenue drop in March?", None),  # "drop" not at the start
+        ("Please remove the East region", None),  # not the first word: left to the other rules
+    ],
+)
+def test_data_changing_commands(question, reason):
+    assert detect_out_of_scope(question) == reason
+
+
+def test_data_change_is_checked_before_creative_and_metrics():
+    assert detect_out_of_scope("Delete the poem about profit") == "data_change"
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Why did West revenue drop in March?",  # change words
+        "How did StudioBook 16 do in March vs February?",  # comparison words
+        "What drove the change for the South region in February 2026?",
+    ],
+)
+def test_change_or_comparison_naming_an_item_uses_the_named_path(question):
+    plan = plan_question(question, OVERVIEW)
+    assert plan.intent == "named_change"
+    assert plan.calls[0].name == "get_change_drivers"
+    assert plan.calls[0].arguments["dimension"] == plan.highlight_kind
+    assert plan.calls[0].arguments["limit"] == 20
+
+
+def test_named_change_answer_leads_with_the_item_and_ends_with_one_company_sentence():
+    data = {
+        "period_a": {"start_month": "2026-04", "end_month": "2026-04"},
+        "period_b": {"start_month": "2026-05", "end_month": "2026-05"},
+        "dimension": "region", "total_change_cents": -500, "total_change_abs_display": "$5",
+        "pct_change_abs": "2.0", "total_change_display": "-$5",
+        "rows": [{"label": "East", "revenue_a_cents": 1000, "revenue_b_cents": 1300, "revenue_a_display": "$10",
+                  "revenue_b_display": "$13", "change_cents": 300, "change_display": "$3", "change_abs_display": "$3",
+                  "share_of_total_change": "-60.0"}],
+    }  # fmt: skip
+    answer = write_answer(Plan("named_change", (), "East", "region"), [{"ok": True, "tool": "get_change_drivers", "data": data}])
+    assert answer == (
+        "East revenue rose by $3, from $10 in April 2026 to $13 in May 2026."
+        " That is -60.0% of the total change in revenue. Across all regions, revenue fell by $5 (2.0%)."
+    )
