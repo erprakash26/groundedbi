@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import analytics
+from app.api import analytics, ask
 from app.api.errors import register_error_handlers
 from app.observability.logging import configure_logging
 from app.observability.middleware import RequestContextMiddleware
@@ -21,6 +21,7 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
     app.include_router(analytics.router)
+    app.include_router(ask.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

@@ -316,3 +316,30 @@ def test_final_answer_quoting_tool_output_passes(seeded_conn):
 
 def test_no_grounding_report_when_there_is_no_final_answer(seeded_conn):
     assert ask(seeded_conn, ScriptedProvider([Clarify("Which year?")])).grounding is None
+
+
+# --- evidence -------------------------------------------------------------------------------
+
+
+def test_evidence_has_measuring_tool_results_but_not_the_overview(seeded_conn):
+    failing = ToolCall("c3", "get_top_products", {"start_month": "2026-01", "end_month": "2026-03", "limit": 0})
+    provider = ScriptedProvider([ToolCalls((OVERVIEW,)), ToolCalls((TOP_3, failing)), FinalAnswer("Done.")])
+    result = ask(seeded_conn, provider)
+    assert result.status == "answered"
+    # Overview (metadata) and the failed call are excluded; only the successful measurement remains.
+    assert [(item.call_id, item.tool) for item in result.evidence] == [("c2", "get_top_products")]
+    assert result.evidence[0].data["rows"]
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        [ToolCalls((TOP_3,)), Clarify("Which year?")],
+        [ToolCalls((TOP_3,)), FinalAnswer("Revenue was $123,456.")],  # grounding_failed
+        [ToolCalls((TOP_3,)), FinalAnswer("Can't forecast.", out_of_scope=True)],
+    ],
+)
+def test_no_evidence_unless_answered(seeded_conn, script):
+    result = ask(seeded_conn, ScriptedProvider(script))
+    assert result.status != "answered"
+    assert result.evidence == []

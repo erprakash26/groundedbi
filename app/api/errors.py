@@ -8,6 +8,7 @@ the request_id field in the server logs.
 """
 
 import logging
+import re
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -18,6 +19,11 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.observability.middleware import REQUEST_ID_HEADER
 
 logger = logging.getLogger("app.errors")
+
+# A field NAME can be raw input too (an extra key in a JSON body). Report it only if it looks
+# like an ordinary identifier; same rule as the tool executor (app/tools/executor.py).
+_SAFE_FIELD_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,63}")
+UNRECOGNIZED_FIELD = "<unrecognized field>"
 
 # Codes for Starlette's own HTTP errors (e.g. the router's 404/405). Our code raises APIError instead.
 _HTTP_CODES = {404: "not_found", 405: "method_not_allowed"}
@@ -70,15 +76,19 @@ async def handle_api_error(request: Request, exc: APIError) -> JSONResponse:
 
 async def handle_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
     # Keep where and why; drop "input" (it would echo injection strings back) and "ctx".
-    details = [
-        {
-            "location": error["loc"][0] if error["loc"] else None,
-            "field": ".".join(str(part) for part in error["loc"][1:]),
-            "message": error["msg"],
-            "type": error["type"],
-        }
-        for error in exc.errors()
-    ]
+    details = []
+    for error in exc.errors():
+        field = ".".join(str(part) for part in error["loc"][1:])
+        if field and not _SAFE_FIELD_PATTERN.fullmatch(field):
+            field = UNRECOGNIZED_FIELD
+        details.append(
+            {
+                "location": error["loc"][0] if error["loc"] else None,
+                "field": field,
+                "message": error["msg"],
+                "type": error["type"],
+            }
+        )
     return error_response(request, 422, "validation_error", "Request validation failed.", details)
 
 

@@ -46,7 +46,7 @@ from app.llm.base import (
     estimate_cost_usd,
 )
 from app.services.grounding import check_grounding
-from app.tools import execute_tool, tool_definitions
+from app.tools import TOOLS, execute_tool, tool_definitions
 
 logger = logging.getLogger("app.orchestrator")
 
@@ -88,12 +88,21 @@ class GroundingOut(BaseModel):
     unsupported: list[str]  # numbers in the withheld answer that no tool result contains
 
 
+class EvidenceItem(BaseModel):
+    call_id: str
+    tool: str
+    data: dict  # the tool result's data, exactly as the provider saw it
+
+
 class AskResult(BaseModel):
     status: Status
     answer: str | None
     clarifying_question: str | None
     message: str | None  # why there is no answer (limits, errors, failed grounding); None when answered
     grounding: GroundingOut | None  # set whenever the provider gave a final answer
+    # The data behind the answer: successful results of measuring tools (not metadata tools
+    # like get_data_overview). Only filled when status is "answered", i.e. grounding passed.
+    evidence: list[EvidenceItem] = []
     tool_calls: list[ToolCallTrace]
     steps: int  # provider turns made
     usage: UsageOut
@@ -108,6 +117,7 @@ class _Run:
     traces: list[ToolCallTrace] = field(default_factory=list)
     usage: Usage = field(default_factory=Usage)
     grounding: GroundingOut | None = None
+    evidence: list[EvidenceItem] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -168,6 +178,7 @@ def run_question(
         clarifying_question=outcome.clarifying_question,
         message=outcome.message,
         grounding=run.grounding,
+        evidence=run.evidence if outcome.status == "answered" else [],
         tool_calls=run.traces,
         steps=run.steps,
         usage=UsageOut(input_tokens=run.usage.input_tokens, output_tokens=run.usage.output_tokens,
@@ -285,4 +296,11 @@ def _grounded_outcome(turn: FinalAnswer, messages: list[Message], run: _Run) -> 
             "grounding_failed",
             message="The answer contained figures that could not be verified against the data, so it was withheld.",
         )
-    return _Outcome("out_of_scope" if turn.out_of_scope else "answered", answer=turn.text)
+    if turn.out_of_scope:
+        return _Outcome("out_of_scope", answer=turn.text)
+    run.evidence = [
+        EvidenceItem(call_id=m.call_id, tool=m.result["tool"], data=m.result["data"])
+        for m in messages
+        if isinstance(m, ToolResultMessage) and m.result["ok"] and not TOOLS[m.result["tool"]].metadata_only
+    ]
+    return _Outcome("answered", answer=turn.text)

@@ -9,6 +9,11 @@ from fastapi import Depends
 from app.api.errors import APIError
 from app.config import Settings, get_settings
 from app.db.connection import get_connection
+from app.llm import Provider, RuleBasedProvider
+
+# One instance for the whole process: RuleBasedProvider keeps no state between turns or
+# requests, so sharing it across concurrent requests is safe.
+_PROVIDER = RuleBasedProvider()
 
 SEED_HINT = "Database not found or not seeded. Create it with: python -m scripts.seed_data"
 
@@ -39,3 +44,8 @@ def get_db(settings: Annotated[Settings, Depends(get_settings)]) -> Iterator[sql
         yield conn
     finally:
         conn.close()
+
+
+def get_provider() -> Provider:
+    """The planner used by POST /ask. A dependency so tests can swap in a test double."""
+    return _PROVIDER

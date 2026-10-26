@@ -300,6 +300,9 @@ class Tool:
     description: str
     arguments_model: type[ToolArguments]
     handler: Callable[[sqlite3.Connection, Any], dict[str, Any]]
+    # True for tools that describe the dataset (names, date range) rather than measure it.
+    # Their results are not evidence for an answer's numbers.
+    metadata_only: bool = False
 
 
 _COVERAGE_NOTE = (
@@ -322,6 +325,7 @@ _TOOL_LIST = [
         ),
         arguments_model=GetDataOverviewArguments,
         handler=_get_data_overview,
+        metadata_only=True,
     ),
     Tool(
         name="get_revenue_by_month",
