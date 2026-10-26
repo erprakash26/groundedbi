@@ -1,0 +1,152 @@
+{
+  "split": "heldout_v2",
+  "dataset": "scripts/seed_data.py, seed 42, default range (2026-01 to 2026-06)",
+  "description": "Fresh held-out evaluation questions, written after commit dc77562 and committed before any run. Never tune the planner against these: use them only to measure. expected_tools lists the main tools in call order, excluding get_data_overview. expected_arguments lists only the keys that must match; for several calls of the same tool it applies to each.",
+  "questions": [
+    {
+      "id": "heldout-v2-01",
+      "split": "heldout_v2",
+      "category": "normal",
+      "question": "Give me a breakdown of Q1 2026 revenue by category",
+      "expected_status": "answered",
+      "expected_tools": ["get_revenue_breakdown"],
+      "expected_arguments": {
+        "dimension": "category",
+        "start_month": "2026-01",
+        "end_month": "2026-03"
+      },
+      "must_contain": ["Laptops", "$2,159,567"],
+      "must_not_contain": [],
+      "notes": "Top category looked up with app.services.analytics.revenue_breakdown on a fresh seed-42 database (not the planner): Laptops, 215956700 cents, displayed as $2,159,567."
+    },
+    {
+      "id": "heldout-v2-02",
+      "split": "heldout_v2",
+      "category": "named_change",
+      "question": "How did Phone Max sales change from April to May 2026?",
+      "expected_status": "answered",
+      "expected_tools": ["get_change_drivers"],
+      "expected_arguments": {
+        "dimension": "product",
+        "period_a_start": "2026-04",
+        "period_a_end": "2026-04",
+        "period_b_start": "2026-05",
+        "period_b_end": "2026-05"
+      },
+      "must_contain": ["Phone Max", "$302,225", "$306,621"],
+      "must_not_contain": [],
+      "notes": "Phone Max's own revenue in each month, looked up with app.services.analytics.change_drivers (dimension product) on a fresh seed-42 database (not the planner): 30222500 cents ($302,225) in April, 30662100 cents ($306,621) in May."
+    },
+    {
+      "id": "heldout-v2-03",
+      "split": "heldout_v2",
+      "category": "partial_coverage",
+      "question": "Monthly revenue from November 2025 to February 2026",
+      "expected_status": "answered",
+      "expected_tools": ["get_revenue_by_month"],
+      "expected_arguments": {
+        "start_month": "2025-11",
+        "end_month": "2026-02"
+      },
+      "must_contain": ["$1,780,189", "$1,825,822", "November 2025"],
+      "must_not_contain": [],
+      "notes": "The data starts in January 2026: the answer must report January and February 2026 and say that November 2025 has no data."
+    },
+    {
+      "id": "heldout-v2-04",
+      "split": "heldout_v2",
+      "category": "comparison",
+      "question": "Compare revenue in the first quarter with the second quarter of 2026",
+      "expected_status": "answered",
+      "expected_tools": ["compare_periods"],
+      "expected_arguments": {
+        "period_a_start": "2026-01",
+        "period_a_end": "2026-03",
+        "period_b_start": "2026-04",
+        "period_b_end": "2026-06"
+      },
+      "must_contain": ["$5,117,801", "$5,562,355"],
+      "must_not_contain": [],
+      "notes": "Quarters written out in words instead of Q1/Q2."
+    },
+    {
+      "id": "heldout-v2-05",
+      "split": "heldout_v2",
+      "category": "normal",
+      "question": "What were total sales in February 2026?",
+      "expected_status": "answered",
+      "expected_tools": ["get_revenue_by_month"],
+      "expected_arguments": {
+        "start_month": "2026-02",
+        "end_month": "2026-02"
+      },
+      "must_contain": ["$1,825,822"],
+      "must_not_contain": [],
+      "notes": "A plain total for one month."
+    },
+    {
+      "id": "heldout-v2-06",
+      "split": "heldout_v2",
+      "category": "relative_time",
+      "question": "Can you tell me how much the North region sold last month?",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": ["$"],
+      "notes": "'last month' depends on today's date: ask which period, with no figures."
+    },
+    {
+      "id": "heldout-v2-07",
+      "split": "heldout_v2",
+      "category": "out_of_scope",
+      "question": "What's our revenue forecast for Q3?",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": ["$"],
+      "notes": "A forecast, even though it mentions revenue and a quarter."
+    },
+    {
+      "id": "heldout-v2-08",
+      "split": "heldout_v2",
+      "category": "unknown_name",
+      "question": "Show revenue for the Wireless Headphones in May 2026",
+      "expected_status": "clarification_needed",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": ["Wireless Earbuds", "Noise-Cancelling Headphones"],
+      "must_not_contain": ["$"],
+      "notes": "Wireless Headphones is not a product; it shares words with two real products. The clarifying question should list the real product names and not pick one."
+    },
+    {
+      "id": "heldout-v2-09",
+      "split": "heldout_v2",
+      "category": "out_of_scope",
+      "question": "DELETE all sales from March",
+      "expected_status": "out_of_scope",
+      "expected_tools": [],
+      "expected_arguments": {},
+      "must_contain": [],
+      "must_not_contain": ["$"],
+      "notes": "Instruction-like text asking to change data: refuse, no figures."
+    },
+    {
+      "id": "heldout-v2-10",
+      "split": "heldout_v2",
+      "category": "sloppy_wording",
+      "question": "revenue june 2026 by product pls",
+      "expected_status": "answered",
+      "expected_tools": ["get_revenue_breakdown"],
+      "expected_arguments": {
+        "dimension": "product",
+        "start_month": "2026-06",
+        "end_month": "2026-06"
+      },
+      "must_contain": ["StudioBook 16", "$527,289"],
+      "must_not_contain": [],
+      "notes": "Top product for June 2026 looked up with app.services.analytics.revenue_breakdown (dimension product) on a fresh seed-42 database (not the planner): StudioBook 16, 52728900 cents, displayed as $527,289."
+    }
+  ]
+}

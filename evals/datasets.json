@@ -12,6 +12,12 @@
       "file": "questions_heldout.json",
       "state": "seen",
       "reason": "inspected while diagnosing the baseline at commit 46aa0c4"
+    },
+    {
+      "split": "heldout_v2",
+      "file": "questions_heldout_v2.json",
+      "state": "fresh",
+      "reason": "written after commit dc77562, committed before any run"
     }
   ]
 }
