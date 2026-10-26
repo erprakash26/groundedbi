@@ -6,6 +6,7 @@ from app.db.queries import (
     MonthRevenue,
     Period,
     data_date_range,
+    list_categories,
     list_products,
     list_regions,
     period_totals,
@@ -72,6 +73,16 @@ def test_list_products_and_regions_sorted(seeded_conn):
     assert len(products) == 8
     assert products == sorted(products)
     assert list_regions(seeded_conn) == ["East", "North", "South", "West"]
+
+
+def test_list_categories_distinct_and_sorted(seeded_conn):
+    categories = list_categories(seeded_conn)
+    assert "Wearables & Tablets" in categories
+    assert categories == sorted(set(categories))
+
+
+def test_list_categories_empty_database(empty_conn):
+    assert list_categories(empty_conn) == []
 
 
 # --- revenue_by_month and period_totals ------------------------------------

@@ -160,6 +160,10 @@ def list_regions(conn: sqlite3.Connection) -> list[str]:
     return [name for (name,) in conn.execute("SELECT name FROM regions ORDER BY name")]
 
 
+def list_categories(conn: sqlite3.Connection) -> list[str]:
+    return [category for (category,) in conn.execute("SELECT DISTINCT category FROM products ORDER BY category")]
+
+
 def revenue_by_month(conn: sqlite3.Connection, period: Period) -> list[MonthRevenue]:
     """One row per month that has sales. A period with no data returns []."""
     rows = conn.execute(

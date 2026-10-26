@@ -33,6 +33,7 @@ __all__ = [
     "change_drivers",
     "compare_periods",
     "data_date_range",
+    "list_categories",
     "list_products",
     "list_regions",
     "revenue_breakdown",
@@ -72,6 +73,10 @@ def list_products(conn: sqlite3.Connection) -> list[str]:
 
 def list_regions(conn: sqlite3.Connection) -> list[str]:
     return queries.list_regions(conn)
+
+
+def list_categories(conn: sqlite3.Connection) -> list[str]:
+    return queries.list_categories(conn)
 
 
 def revenue_by_month(conn: sqlite3.Connection, period: Period) -> list[MonthRevenue]:
