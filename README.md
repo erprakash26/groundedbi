@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.png">
-    <img alt="GroundedBI" src="docs/logo-light.png" width="320">
-  </picture>
+  <img alt="GroundedBI" src="docs/logo.png" width="320">
 </p>
 
 <p align="center">

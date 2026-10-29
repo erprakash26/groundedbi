@@ -37,7 +37,7 @@ footer: honest notes (rule-based planner, synthetic data, eval result) + links
   The tick has a navy outline so it stays separate from the bars at small sizes.
 - Wordmark: "GroundedBI" in Schibsted Grotesk, weight 750, letter-spacing -0.02em.
 - Files: favicon.svg, apple-touch-icon.png (180px, full bleed), og-image.png (1200x630),
-  docs/logo-light.png and docs/logo-dark.png for the README.
+  docs/logo.png for the README (one file, readable on GitHub's light and dark themes).
 
 ## Pages
 - / (Ask): question box, examples, memo + ledger, trace.
