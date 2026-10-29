@@ -31,6 +31,7 @@ UNRECOGNIZED_FIELD = "<unrecognized field>"
 VALIDATION_ERROR_RESPONSE = {422: {"model": ErrorResponse, "description": "Validation error (input is never echoed)"}}
 INTERNAL_ERROR_RESPONSE = {500: {"model": ErrorResponse, "description": "Internal error (generic message)"}}
 DATABASE_ERROR_RESPONSE = {503: {"model": ErrorResponse, "description": "Database missing or not seeded"}}
+PAYLOAD_TOO_LARGE_RESPONSE = {413: {"model": ErrorResponse, "description": "Request body over 16 KB"}}
 # Routes that take input and read the database.
 ERROR_RESPONSES = {**VALIDATION_ERROR_RESPONSE, **INTERNAL_ERROR_RESPONSE, **DATABASE_ERROR_RESPONSE}
 
@@ -72,6 +73,9 @@ def error_response(
     if details is not None:
         body["details"] = details
     headers = dict(headers or {})
+    # Set here, not only in middleware: the 500 handler runs outside every middleware we add.
+    headers["Cache-Control"] = "no-store"  # an error must never be served from a cache
+    headers["X-Content-Type-Options"] = "nosniff"
     if request_id:
         # Needed for the 500 path, which bypasses the middleware's send wrapper.
         # For every other error the middleware sets the same value again.

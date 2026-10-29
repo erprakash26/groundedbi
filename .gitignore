@@ -1,8 +1,9 @@
 # Virtual environment
 .venv/
 
-# Secrets
-.env
+# Secrets: every .env file except the committed template
+.env*
+!.env.example
 
 # Python
 __pycache__/

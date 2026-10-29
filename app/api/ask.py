@@ -6,6 +6,7 @@ Thin on purpose: validate the body, call run_question, map the result. All decis
 HTTP status:
   200  answered, clarification_needed, out_of_scope, grounding_failed, limit_exceeded,
        tool_call_limit_exceeded: the request was handled; "status" in the body says how
+  413  body over 16 KB (payload_too_large, from BodySizeLimitMiddleware)
   422  invalid body (existing validation envelope; the question is never echoed back)
   500  provider_error or error (existing internal_error envelope, generic message)
   503  database missing or not seeded (from get_db)
@@ -17,7 +18,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Request
 
 from app.api.deps import get_db, get_provider
-from app.api.errors import ERROR_RESPONSES, INTERNAL_ERROR_RESPONSE, APIError
+from app.api.errors import ERROR_RESPONSES, INTERNAL_ERROR_RESPONSE, PAYLOAD_TOO_LARGE_RESPONSE, APIError
 from app.api.examples import ASK_EXAMPLES, OPENAPI_EXAMPLES
 from app.llm import Provider
 from app.schemas.ask import AskExample, AskRequest, AskResponse, EvidenceOut, GroundingSummary, TraceEntry, UsageOut
@@ -28,7 +29,7 @@ router = APIRouter(tags=["ask"])
 _FAILED = ("provider_error", "error")
 
 
-@router.post("/ask", response_model=AskResponse, responses=ERROR_RESPONSES)
+@router.post("/ask", response_model=AskResponse, responses={**ERROR_RESPONSES, **PAYLOAD_TOO_LARGE_RESPONSE})
 def ask(
     request: Request,
     body: Annotated[AskRequest, Body(openapi_examples=OPENAPI_EXAMPLES)],

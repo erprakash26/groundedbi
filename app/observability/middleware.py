@@ -1,4 +1,4 @@
-"""Request context middleware: request ID, X-Request-ID response header and the access log."""
+"""Request context middleware: request ID, X-Request-ID and nosniff response headers, and the access log."""
 
 import logging
 import time
@@ -40,7 +40,10 @@ class RequestContextMiddleware:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]
-                MutableHeaders(scope=message)[REQUEST_ID_HEADER] = request_id
+                headers = MutableHeaders(scope=message)
+                headers[REQUEST_ID_HEADER] = request_id
+                # Browsers must not guess a different type (e.g. run a JSON body as script).
+                headers["X-Content-Type-Options"] = "nosniff"
             await send(message)
 
         try:

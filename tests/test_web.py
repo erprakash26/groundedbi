@@ -204,3 +204,27 @@ def test_pages_and_static_are_not_in_the_openapi_schema():
     assert not paths & set(PAGES)
     assert not [path for path in paths if path.startswith("/static")]
     assert "/ask/examples" in paths
+
+
+# --- privacy notice and print styles ---
+
+PRIVACY_NOTICE = (
+    "Questions are logged to improve the demo. GroundedBI doesn't record your IP address, "
+    "but the hosting provider may. Please don't include personal information."
+)
+
+
+def test_ask_page_shows_the_privacy_notice_as_a_hint():
+    parsed = _parse(WEB_DIR / "index.html")
+    note = next(attrs for tag, attrs in parsed.tags if attrs.get("id") == "privacy-note")
+    assert note["class"] == "hint"
+    assert PRIVACY_NOTICE in (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    question = next(attrs for tag, attrs in parsed.tags if attrs.get("id") == "question")
+    assert "privacy-note" in question["aria-describedby"].split()
+
+
+def test_print_styles_drop_the_verified_highlight_but_keep_the_tick():
+    css = (WEB_DIR / "styles.css").read_text(encoding="utf-8")
+    print_block = css[css.index("@media print") :]
+    assert re.search(r"\.verified,[^{]*\{\s*background: none;", print_block)
+    assert re.search(r"\.verified::after\s*\{[^}]*print-color-adjust: exact;", print_block)

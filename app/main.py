@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.api import analytics, ask, web
+from app.api.http_policy import BodySizeLimitMiddleware, CacheControlMiddleware
 from app.api.errors import INTERNAL_ERROR_RESPONSE, register_error_handlers
 from app.observability.logging import configure_logging
 from app.observability.middleware import RequestContextMiddleware
@@ -19,6 +20,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Build the app. A factory so tests can build their own instance (e.g. with a test-only route)."""
     app = FastAPI(title="GroundedBI", lifespan=lifespan)
+    # The last one added runs first: RequestContext wraps the others, so a 413 or a cached
+    # response still gets a request ID, nosniff and an access log line.
+    app.add_middleware(BodySizeLimitMiddleware)
+    app.add_middleware(CacheControlMiddleware)
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
     app.include_router(analytics.router)

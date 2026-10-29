@@ -1320,3 +1320,19 @@ a:hover {
     transition: none;
   }
 }
+
+@media print {
+  /* Printed, the highlight band reads like a strike-through. Keep only the tick. */
+  .verified,
+  .verified:hover,
+  .verified:focus-visible,
+  .verified.is-linked {
+    background: none;
+  }
+
+  /* The tick is a background colour behind a mask; browsers drop backgrounds when printing. */
+  .verified::after {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
