@@ -1,0 +1,5 @@
+# Local development and CI: the runtime packages plus test and audit tools.
+-r requirements.txt
+pytest==9.1.1
+httpx2==2.13.1
+pip-audit==2.10.1

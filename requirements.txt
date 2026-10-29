@@ -1,6 +1,6 @@
-fastapi
-uvicorn[standard]
-pydantic
-pydantic-settings
-pytest
-httpx2
+# Runtime only: what the deployed app needs. Pinned to the versions the test suite passes on.
+# Test and audit tools are in requirements-dev.txt.
+fastapi==0.143.2
+uvicorn[standard]==0.54.0
+pydantic==2.14.1
+pydantic-settings==2.16.0

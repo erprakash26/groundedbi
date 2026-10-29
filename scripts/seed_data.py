@@ -8,6 +8,10 @@ Planted patterns (month 1 = start month):
 
 Usage:
     python -m scripts.seed_data [--db PATH] [--seed N] [--start YYYY-MM] [--months N]
+
+Without --db the database goes where the app looks for it (app.config, DATABASE_PATH).
+Vercel's build passes --db, so the build needs only the standard library: this module must
+not import a third-party package at the top (tests/test_deployment.py checks it).
 """
 
 import argparse
@@ -21,7 +25,6 @@ from typing import NamedTuple
 from app.db.connection import get_connection
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "app" / "db" / "schema.sql"
-DEFAULT_DB_PATH = Path("data") / "groundedbi.db"
 
 # --- Pattern targets. Month positions are 1-based: month 1 = start month. -----------------
 REFERENCE_MONTH = 2  # the dip and the recovery are both measured against this month
@@ -287,13 +290,26 @@ def print_summary(db_path: str | Path) -> None:
         previous = row["revenue"]
 
 
+def default_db_path() -> Path:
+    """The path the app reads, so seeding without --db always fills the database the app uses.
+
+    Imported here, not at the top: app.config needs pydantic-settings, and the build command
+    (which passes --db) must start without any third-party package.
+    """
+    from app.config import get_settings
+
+    return get_settings().database_path
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Create and seed the GroundedBI SQLite database.")
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="database file path")
+    parser.add_argument("--db", type=Path, help="database file path (default: the app's DATABASE_PATH)")
     parser.add_argument("--seed", type=int, default=42, help="random seed")
     parser.add_argument("--start", default="2026-01", help="first month, YYYY-MM")
     parser.add_argument("--months", type=int, default=6, help=f"number of months (>= {MIN_MONTHS})")
     args = parser.parse_args(argv)
+    if args.db is None:
+        args.db = default_db_path()
 
     try:
         seed_database(args.db, seed=args.seed, start=args.start, months=args.months)

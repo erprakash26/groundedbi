@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "python -m scripts.seed_data --db data/groundedbi.db",
+  "functions": {
+    "app/main.py": {
+      "excludeFiles": "{tests/**,evals/**,docs/**}"
+    }
+  }
+}

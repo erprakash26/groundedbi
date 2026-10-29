@@ -193,8 +193,9 @@ def test_split_choices_come_from_datasets_json(capsys):
     with pytest.raises(SystemExit):
         run_evals.main(["--split", "no_such_split"])
     error = capsys.readouterr().err
-    for split in [*run_evals.DATASETS, "all"]:
-        assert f"'{split}'" in error
+    # Python 3.12.8+ prints "choose from dev, heldout"; earlier versions quote each choice.
+    choices = error.split("(choose from ", 1)[1].split(")", 1)[0]
+    assert [choice.strip("'") for choice in choices.split(", ")] == [*run_evals.DATASETS, "all"]
 
 
 def test_all_registered_question_files_are_valid():
