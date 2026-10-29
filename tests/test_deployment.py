@@ -185,8 +185,9 @@ def test_ci_runs_every_check_on_3_11_and_3_12():
     assert job["strategy"]["matrix"]["python-version"] == ["3.11", "3.12"]
     commands = [step["run"] for step in job["steps"] if "run" in step]
     expected = [
+        "python -m pip install --upgrade pip setuptools",
         "python -m pip install -r requirements-dev.txt",
-        "pip-audit",
+        "pip-audit -r requirements-dev.txt",
         "python -m pytest -v",
         "python -m evals.check_expectations",
         "python -m evals.run_evals --split dev --fail-under 1.0",
@@ -194,3 +195,5 @@ def test_ci_runs_every_check_on_3_11_and_3_12():
     joined = "\n".join(commands)
     positions = [joined.index(command) for command in expected]
     assert positions == sorted(positions)  # all present, in this order
+    actions = [step["uses"] for step in job["steps"] if "uses" in step]
+    assert actions == ["actions/checkout@v7", "actions/setup-python@v7"]  # node24 majors

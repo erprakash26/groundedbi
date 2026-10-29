@@ -15,9 +15,9 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -27,11 +27,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          # setuptools: the 3.11 runner image preinstalls an old one that pip-audit would flag.
+          python -m pip install --upgrade pip setuptools
           python -m pip install -r requirements-dev.txt
 
-      - name: Audit dependencies for known vulnerabilities
-        run: pip-audit
+      # Audits what we ship and test with (resolved in an isolated environment), not the
+      # runner's own preinstalled tools.
+      - name: Audit project dependencies for known vulnerabilities
+        run: pip-audit -r requirements-dev.txt
 
       - name: Run tests
         run: python -m pytest -v
