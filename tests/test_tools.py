@@ -386,7 +386,10 @@ def test_tool_executed_log_line(conn, log_lines):
     assert line["ok"] is True
     assert line["error_code"] is None
     assert line["arguments"] == {**Q1, "limit": 3}
+    assert line["arguments_valid"] is True
     assert isinstance(line["duration_ms"], float)
+    assert isinstance(line["sql_duration_ms"], float)
+    assert 0 <= line["sql_duration_ms"] <= line["duration_ms"]  # SQL time is part of the whole call
 
 
 def test_tool_executed_log_line_for_invalid_call_omits_raw_arguments(conn, log_lines):
@@ -395,7 +398,32 @@ def test_tool_executed_log_line_for_invalid_call_omits_raw_arguments(conn, log_l
     assert line["ok"] is False
     assert line["error_code"] == "invalid_arguments"
     assert line["arguments"] is None
+    assert line["arguments_valid"] is False
+    assert line["sql_duration_ms"] is None  # rejected before any SQL ran
     assert_not_echoed("DROP", line)
+
+
+def test_tool_executed_log_line_for_unknown_tool(conn, log_lines):
+    execute_tool(conn, "drop_everything", {})
+    line = next(line for line in log_lines() if line.get("event") == "tool_executed")
+    assert line["tool"] is None
+    assert line["error_code"] == "unknown_tool"
+    assert line["arguments_valid"] is False
+    assert line["sql_duration_ms"] is None
+
+
+def test_tool_executed_log_line_for_failed_handler_separates_validation_from_failure(conn, monkeypatch, log_lines):
+    # ok is False, but the arguments were fine and the handler did run: the log must say both.
+    def explode(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(analytics, "top_products", explode)
+    execute_tool(conn, "get_top_products", Q1)
+    line = next(line for line in log_lines() if line.get("event") == "tool_executed")
+    assert line["ok"] is False
+    assert line["error_code"] == "tool_failed"
+    assert line["arguments_valid"] is True
+    assert isinstance(line["sql_duration_ms"], float)
 
 
 def test_tool_executed_log_line_carries_the_request_id(conn, log_lines):

@@ -52,6 +52,7 @@ def execute_tool(
     normalized: dict[str, Any] | None = None
     data: dict[str, Any] | None = None
     error: ToolError | None = None
+    sql_duration_ms: float | None = None  # None: the handler (and so its SQL) never ran
 
     if tool is None:
         # The unknown name is not echoed: it is raw model output and could be anything.
@@ -67,7 +68,10 @@ def execute_tool(
             )
         else:
             normalized = args.model_dump(mode="json")
+            sql_started = time.perf_counter()
             data, error = _run_with_budget(conn, tool.name, tool.handler, args, time_budget_seconds)
+            # The handler's time: its parameterized SQL plus building the result dict from the rows.
+            sql_duration_ms = round((time.perf_counter() - sql_started) * 1000, 2)
 
     result = ToolResult(
         ok=error is None,
@@ -83,9 +87,12 @@ def execute_tool(
             "event": "tool_executed",
             "tool": result.tool,
             "arguments": normalized,  # None when invalid: raw input is not logged either
+            # Explicit, so a reader need not decode error_code: False for an unknown tool or bad arguments.
+            "arguments_valid": error is None or error.code not in ("unknown_tool", "invalid_arguments"),
             "ok": result.ok,
             "error_code": error.code if error else None,
-            "duration_ms": result.duration_ms,
+            "sql_duration_ms": sql_duration_ms,
+            "duration_ms": result.duration_ms,  # the whole call: validation + handler
         },
     )
     return result

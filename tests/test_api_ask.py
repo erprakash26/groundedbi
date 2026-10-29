@@ -248,6 +248,32 @@ def test_request_id_matches_header_and_logs(client, log_lines):
     assert completed[0]["status"] == "answered"
 
 
+def test_march_request_logs_every_trace_field_the_brief_requires(client, log_lines):
+    # The brief: question, tool selected, arguments, validation result, SQL duration, tokens used,
+    # estimated cost and final status, all tied together by the request ID.
+    client.post("/ask", json={"question": MARCH}, headers={REQUEST_ID_HEADER: "trace-fields-1"})
+    lines = [line for line in log_lines() if line["request_id"] == "trace-fields-1"]
+    by_event = {}
+    for line in lines:
+        by_event.setdefault(line.get("event"), []).append(line)
+
+    (received,) = by_event["question_received"]
+    assert received["question"] == MARCH
+    executed = by_event["tool_executed"]
+    assert [line["tool"] for line in executed] == ["get_data_overview", "get_change_drivers"]
+    for line in executed:
+        assert isinstance(line["arguments"], dict)
+        assert line["arguments_valid"] is True
+        assert isinstance(line["sql_duration_ms"], float)
+    assert executed[1]["arguments"]["period_b_start"] == "2026-03"
+    (completed,) = by_event["question_completed"]
+    assert completed["status"] == "answered"
+    assert completed["input_tokens"] == 0 and completed["output_tokens"] == 0  # rule-based: no LLM tokens
+    assert completed["estimated_cost_usd"] == 0.0
+    (access,) = by_event["request_completed"]
+    assert access["path"] == "/ask" and access["status_code"] == 200
+
+
 def test_generated_request_id_matches_header(client):
     response = ask(client, MARCH)
     assert response.json()["request_id"] == response.headers[REQUEST_ID_HEADER]
