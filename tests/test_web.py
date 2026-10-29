@@ -228,3 +228,11 @@ def test_print_styles_drop_the_verified_highlight_but_keep_the_tick():
     print_block = css[css.index("@media print") :]
     assert re.search(r"\.verified,[^{]*\{\s*background: none;", print_block)
     assert re.search(r"\.verified::after\s*\{[^}]*print-color-adjust: exact;", print_block)
+
+
+def test_ask_result_is_one_column_below_1080px():
+    # Side by side, the evidence table is cut off at mid widths (around 940px).
+    css = (WEB_DIR / "styles.css").read_text(encoding="utf-8")
+    block = re.search(r"@media \(max-width: 1080px\) \{(.*?)\n\}", css, re.S)
+    assert block, "no @media (max-width: 1080px) block"
+    assert re.search(r"\.result-grid\s*\{\s*grid-template-columns: minmax\(0, 1fr\);", block[1])

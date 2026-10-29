@@ -1230,8 +1230,14 @@ a:hover {
   }
 }
 
+/* Answer and evidence side by side need room: below 1080px the evidence table would be cut off. */
+@media (max-width: 1080px) {
+  .result-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 860px) {
-  .result-grid,
   .charts,
   .layers,
   .flow-exits {

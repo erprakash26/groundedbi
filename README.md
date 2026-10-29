@@ -147,7 +147,7 @@ python -m evals.check_expectations
 python -m evals.run_evals --split dev --fail-under 1.0
 ```
 
-`run_evals` rewrites `evals/results/latest.md`; restore it with `git checkout -- evals/results/latest.md` if you don't mean to update the report.
+`run_evals --split all` (the default) rewrites the committed report `evals/results/latest.md`. A single split, like the `--split dev` above, writes `evals/results/partial-<split>.md` and `.json` instead; those are gitignored, so a quick check never changes the report.
 
 ## Deploy
 

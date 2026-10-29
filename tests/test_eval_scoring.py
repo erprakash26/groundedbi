@@ -239,15 +239,15 @@ def test_runner_smoke_and_determinism(tmp_path, two_question_file, capsys):
     results = tmp_path / "results"
     code = run_evals.run("dev", question_files={"dev": two_question_file}, results_dir=results)
     assert code == 0
-    first = json.loads((results / "latest.json").read_text(encoding="utf-8"))
+    first = json.loads((results / "partial-dev.json").read_text(encoding="utf-8"))
     assert first["meta"]["seed"] == 42 and first["meta"]["commit"]
     assert first["metrics"]["dev"]["overall"]["pass"] == {"passed": 2, "total": 2, "rate": 1.0}
-    markdown = (results / "latest.md").read_text(encoding="utf-8")
+    markdown = (results / "partial-dev.md").read_text(encoding="utf-8")
     assert "## Split: dev" in markdown and "Seed: 42" in markdown and "## Failures (0)" in markdown
     assert "[dev] 2 questions" in capsys.readouterr().out
 
     run_evals.run("dev", question_files={"dev": two_question_file}, results_dir=results)
-    second = json.loads((results / "latest.json").read_text(encoding="utf-8"))
+    second = json.loads((results / "partial-dev.json").read_text(encoding="utf-8"))
     assert _stable(first) == _stable(second)
 
 
@@ -266,9 +266,43 @@ def test_failures_are_listed_in_the_report(tmp_path):
     failing = tmp_path / "failing.json"
     _write_questions(failing, [make_question(id="bad-01", question="What was our profit in March?")])
     run_evals.run("dev", question_files={"dev": failing}, results_dir=tmp_path)
-    markdown = (tmp_path / "latest.md").read_text(encoding="utf-8")
+    markdown = (tmp_path / "partial-dev.md").read_text(encoding="utf-8")
     assert "### bad-01 (dev, change_drivers)" in markdown
     assert "- Status: expected `answered`, actual `out_of_scope`" in markdown
+
+
+@pytest.mark.parametrize(
+    ("split", "stem"), [("all", "latest"), ("dev", "partial-dev"), ("heldout_v2", "partial-heldout_v2")]
+)
+def test_report_paths(tmp_path, split, stem):
+    assert run_evals.report_paths(split, tmp_path) == (tmp_path / f"{stem}.json", tmp_path / f"{stem}.md")
+
+
+def test_dev_only_run_leaves_the_committed_report_untouched(tmp_path, two_question_file):
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "latest.md").write_text("committed report", encoding="utf-8")
+    (results / "latest.json").write_text("{}", encoding="utf-8")
+
+    run_evals.run("dev", question_files={"dev": two_question_file}, results_dir=results)
+
+    assert (results / "latest.md").read_text(encoding="utf-8") == "committed report"
+    assert (results / "latest.json").read_text(encoding="utf-8") == "{}"
+    assert "## Split: dev" in (results / "partial-dev.md").read_text(encoding="utf-8")
+    assert json.loads((results / "partial-dev.json").read_text(encoding="utf-8"))["metrics"]["dev"]
+
+
+def test_full_run_writes_the_report_and_no_partial_files(tmp_path, two_question_file):
+    results = tmp_path / "results"
+    run_evals.run("all", question_files={"dev": two_question_file}, results_dir=results)
+    assert "## Split: dev" in (results / "latest.md").read_text(encoding="utf-8")
+    assert (results / "latest.json").is_file()
+    assert not list(results.glob("partial-*"))
+
+
+def test_partial_reports_are_gitignored():
+    gitignore = (run_evals.EVALS_DIR.parent / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "evals/results/partial-*" in gitignore
 
 
 # --- expectations checker -------------------------------------------------------------------------

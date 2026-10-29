@@ -27,3 +27,5 @@ Thumbs.db
 
 # Eval results: the markdown report is committed, the full JSON is regenerated on every run
 evals/results/*.json
+# Single-split runs (--split dev) write here and never touch the committed report
+evals/results/partial-*

@@ -4,7 +4,11 @@
 
 Seeds a fresh database in a temp folder (seed 42, default range), opens it read-only and calls
 run_question with RuleBasedProvider directly, so the eval measures planning, tools and
-grounding, not HTTP. Writes evals/results/latest.json (everything) and latest.md (report).
+grounding, not HTTP.
+
+Reports: --split all (the default) writes evals/results/latest.json (everything) and
+latest.md, the committed report. Any single split writes partial-<split>.json and .md
+instead (gitignored), so a quick dev run can never overwrite the committed report.
 
 --fail-under gates only the dev split (exit code 1 if its pass rate is below RATE). The
 held-out split is measured, never gated, so nobody is tempted to tune against it.
@@ -236,6 +240,12 @@ def console_summary(report: dict[str, Any]) -> str:
 # --- entry point ---------------------------------------------------------------------------
 
 
+def report_paths(split: str, results_dir: Path = RESULTS_DIR) -> tuple[Path, Path]:
+    """(json, markdown) paths: latest.* only for a full run, partial-<split>.* otherwise."""
+    stem = "latest" if split == "all" else f"partial-{split}"
+    return results_dir / f"{stem}.json", results_dir / f"{stem}.md"
+
+
 def run(
     split: str = "all",
     fail_under: float | None = None,
@@ -251,12 +261,11 @@ def run(
     report = build_report(run_questions(questions_by_split), splits, states)
 
     results_dir.mkdir(parents=True, exist_ok=True)
-    (results_dir / "latest.json").write_text(
-        json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-    (results_dir / "latest.md").write_text(render_markdown(report), encoding="utf-8")
+    json_path, markdown_path = report_paths(split, results_dir)
+    json_path.write_text(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8")
+    markdown_path.write_text(render_markdown(report), encoding="utf-8")
     print(console_summary(report))
-    print(f"\nWrote {results_dir / 'latest.json'} and {results_dir / 'latest.md'}")
+    print(f"\nWrote {json_path} and {markdown_path}")
 
     if fail_under is None:
         return 0
