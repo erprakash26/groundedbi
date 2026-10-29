@@ -15,30 +15,23 @@ import sqlite3
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Request
-from fastapi.openapi.models import Example
 
 from app.api.deps import get_db, get_provider
-from app.api.errors import ERROR_RESPONSES, APIError
+from app.api.errors import ERROR_RESPONSES, INTERNAL_ERROR_RESPONSE, APIError
+from app.api.examples import ASK_EXAMPLES, OPENAPI_EXAMPLES
 from app.llm import Provider
-from app.schemas.ask import AskRequest, AskResponse, EvidenceOut, GroundingSummary, TraceEntry, UsageOut
+from app.schemas.ask import AskExample, AskRequest, AskResponse, EvidenceOut, GroundingSummary, TraceEntry, UsageOut
 from app.services.orchestrator import run_question
 
-router = APIRouter(tags=["ask"], responses=ERROR_RESPONSES)
+router = APIRouter(tags=["ask"])
 
-# Shown as a dropdown in /docs, ready for "Try it out".
-_EXAMPLES = {
-    "drivers": Example(summary="What drove a drop", value={"question": "Why did revenue drop in March compared with February?"}),
-    "clarify": Example(summary="Unknown region (asks back)", value={"question": "Revenue in Europe in March"}),
-    "out_of_scope": Example(summary="Metric not in the data", value={"question": "What was our profit in March?"}),
-    "false_premise": Example(summary="Wrong premise (corrected)", value={"question": "Why did revenue drop from May to June?"}),
-}
 _FAILED = ("provider_error", "error")
 
 
-@router.post("/ask", response_model=AskResponse)
+@router.post("/ask", response_model=AskResponse, responses=ERROR_RESPONSES)
 def ask(
     request: Request,
-    body: Annotated[AskRequest, Body(openapi_examples=_EXAMPLES)],
+    body: Annotated[AskRequest, Body(openapi_examples=OPENAPI_EXAMPLES)],
     conn: Annotated[sqlite3.Connection, Depends(get_db)],
     provider: Annotated[Provider, Depends(get_provider)],
 ) -> AskResponse:
@@ -75,3 +68,10 @@ def ask(
         duration_ms=result.duration_ms,
         usage=UsageOut(**result.usage.model_dump()),
     )
+
+
+# No input and no database: only a 500 is possible besides 200.
+@router.get("/ask/examples", response_model=list[AskExample], responses=INTERNAL_ERROR_RESPONSE)
+def ask_examples() -> list[AskExample]:
+    """Example questions (the same ones offered in the /ask examples dropdown)."""
+    return list(ASK_EXAMPLES)

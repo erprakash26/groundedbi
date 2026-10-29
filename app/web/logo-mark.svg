@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="GroundedBI">
+  <rect width="64" height="64" rx="15" fill="#18263B"/>
+  <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="14.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="1.5"/>
+  <path d="M28.5 49.5V42.0a3.5 3.5 0 0 1 7 0V49.5Z M38.0 49.5V34.0a3.5 3.5 0 0 1 7 0V49.5Z M47.5 49.5V26.5a3.5 3.5 0 0 1 7 0V49.5Z" fill="#6E86A8"/>
+  <path d="M10.5 50.75H54" stroke="#6E86A8" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M12 29.5 23.5 41 51.5 12.5" fill="none" stroke="#18263B" stroke-width="12.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M12 29.5 23.5 41 51.5 12.5" fill="none" stroke="#63C891" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

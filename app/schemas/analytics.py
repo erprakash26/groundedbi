@@ -63,6 +63,7 @@ class MetaResponse(BaseModel):
     last_date: str | None
     products: list[str]
     regions: list[str]
+    categories: list[str]
 
 
 class MonthRevenueRow(RowModel):

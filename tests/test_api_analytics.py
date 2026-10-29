@@ -63,6 +63,9 @@ def test_meta(client, conn):
     assert body["first_date"].startswith("2026-01") and body["last_date"].startswith("2026-06")
     assert body["products"] == analytics.list_products(conn)
     assert body["regions"] == analytics.list_regions(conn)
+    assert body["categories"] == analytics.list_categories(conn)
+    # The seed has 8 products in 4 categories, sold in 4 regions (the website's scope line).
+    assert (len(body["products"]), len(body["regions"]), len(body["categories"])) == (8, 4, 4)
 
 
 def test_revenue_by_month(client, conn):

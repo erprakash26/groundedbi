@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Explore the data | GroundedBI</title>
+  <meta name="description" content="Revenue by month, region, category and product, drawn from the same analytics API the GroundedBI assistant uses.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f2f5f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1828" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="GroundedBI">
+  <meta property="og:title" content="Explore the data | GroundedBI">
+  <meta property="og:description" content="Revenue by month, region, category and product from the GroundedBI analytics API.">
+  <meta property="og:image" content="https://groundedbi.vercel.app/static/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="preload" href="/static/fonts/source-serif-4-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/common.js" defer></script>
+  <script src="/static/explore.js" defer></script>
+</head>
+<body class="page-explore">
+  <a class="skip-link" href="#main">Skip to the charts</a>
+
+  <header class="site-header">
+    <div class="wrap site-bar">
+      <a class="brand" href="/" aria-label="GroundedBI home">
+        <img class="brand-mark" src="/static/logo-mark.svg" alt="" width="32" height="32">
+        <span class="brand-name">GroundedBI</span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="/">Ask</a>
+        <a href="/explore" aria-current="page">Explore</a>
+        <a href="/how-it-works">How it works</a>
+        <a class="nav-external" href="https://github.com/erprakash26/groundedbi">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wrap page-intro">
+      <h1 class="title">Explore the sales data.</h1>
+      <p class="lede">These charts read the same analytics API the assistant uses. Point at or tab to a bar to see its value, or open the table under any chart.</p>
+      <p class="scope" id="scope">Loading the data range…</p>
+    </div>
+
+    <section class="wrap section" aria-labelledby="overview-title">
+      <h2 class="section-title" id="overview-title">At a glance</h2>
+      <div class="stats" id="stats"><p class="chart-status">Loading…</p></div>
+      <div id="callout"></div>
+    </section>
+
+    <section class="wrap section" aria-labelledby="charts-title">
+      <h2 class="section-title" id="charts-title">Revenue in detail</h2>
+      <div class="charts">
+        <article class="chart-card wide" aria-labelledby="chart-monthly-title">
+          <h3 class="chart-title" id="chart-monthly-title">Revenue by month</h3>
+          <p class="chart-subtitle" id="chart-monthly-sub"></p>
+          <div class="chart" id="chart-monthly"><p class="chart-status">Loading…</p></div>
+        </article>
+        <article class="chart-card" aria-labelledby="chart-region-title">
+          <h3 class="chart-title" id="chart-region-title">Revenue by region</h3>
+          <p class="chart-subtitle" id="chart-region-sub"></p>
+          <div class="chart" id="chart-region"><p class="chart-status">Loading…</p></div>
+        </article>
+        <article class="chart-card" aria-labelledby="chart-category-title">
+          <h3 class="chart-title" id="chart-category-title">Revenue by category</h3>
+          <p class="chart-subtitle" id="chart-category-sub"></p>
+          <div class="chart" id="chart-category"><p class="chart-status">Loading…</p></div>
+        </article>
+        <article class="chart-card wide" aria-labelledby="chart-products-title">
+          <h3 class="chart-title" id="chart-products-title">Top 5 products</h3>
+          <p class="chart-subtitle" id="chart-products-sub"></p>
+          <div class="chart" id="chart-products"><p class="chart-status">Loading…</p></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="GroundedBI home">
+          <img class="brand-mark" src="/static/logo-mark.svg" alt="" width="28" height="28">
+          <span class="brand-name">GroundedBI</span>
+        </a>
+        <p>A portfolio project by Prakash Bhandari. Questions are planned by a deterministic rule-based planner, not a language model, and the data is synthetic.</p>
+      </div>
+      <nav class="footer-links" aria-label="Site">
+        <p class="footer-title">Site</p>
+        <a href="/">Ask a question</a>
+        <a href="/explore">Explore the data</a>
+        <a href="/how-it-works">How it works</a>
+      </nav>
+      <nav class="footer-links" aria-label="Project">
+        <p class="footer-title">Project</p>
+        <a href="https://github.com/erprakash26/groundedbi">Source code</a>
+        <a href="https://github.com/erprakash26/groundedbi/blob/main/evals/results/latest.md">Evaluation report</a>
+        <a href="/docs">API documentation</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

@@ -57,3 +57,10 @@ class AskResponse(BaseModel):
     trace: list[TraceEntry]
     duration_ms: float
     usage: UsageOut
+
+
+class AskExample(BaseModel):
+    """One example question for GET /ask/examples and the /docs dropdown."""
+
+    summary: str  # short label, e.g. "What drove a drop"
+    question: str

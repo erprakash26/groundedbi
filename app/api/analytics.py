@@ -84,13 +84,14 @@ def _two_period_fields(conn: sqlite3.Connection, period_a: Period, period_b: Per
 
 @router.get("/meta", response_model=MetaResponse)
 def meta(conn: Db) -> MetaResponse:
-    """Date range of the data and the available products and regions."""
+    """Date range of the data and the available products, regions and categories."""
     date_range = analytics.data_date_range(conn)
     return MetaResponse(
         first_date=date_range.first_date if date_range else None,
         last_date=date_range.last_date if date_range else None,
         products=analytics.list_products(conn),
         regions=analytics.list_regions(conn),
+        categories=analytics.list_categories(conn),
     )
 
 

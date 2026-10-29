@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How it works | GroundedBI</title>
+  <meta name="description" content="How GroundedBI plans a question, queries the data safely, checks every number, and how it was evaluated.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f2f5f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1828" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="GroundedBI">
+  <meta property="og:title" content="How it works | GroundedBI">
+  <meta property="og:description" content="How GroundedBI plans a question, queries the data safely, checks every number, and how it was evaluated.">
+  <meta property="og:image" content="https://groundedbi.vercel.app/static/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+  <link rel="preload" href="/static/fonts/source-serif-4-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/schibsted-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="page-how">
+  <a class="skip-link" href="#main">Skip to the content</a>
+
+  <header class="site-header">
+    <div class="wrap site-bar">
+      <a class="brand" href="/" aria-label="GroundedBI home">
+        <img class="brand-mark" src="/static/logo-mark.svg" alt="" width="32" height="32">
+        <span class="brand-name">GroundedBI</span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="/">Ask</a>
+        <a href="/explore">Explore</a>
+        <a href="/how-it-works" aria-current="page">How it works</a>
+        <a class="nav-external" href="https://github.com/erprakash26/groundedbi">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="wrap page-intro">
+      <h1 class="title">How GroundedBI keeps its answers honest.</h1>
+      <p class="lede">The planner can only use six read-only tools, every number in an answer must match a query result, and when a question is unclear it asks instead of guessing.</p>
+    </div>
+
+    <section class="wrap section" aria-labelledby="flow-title">
+      <h2 class="section-title" id="flow-title">What happens when you ask</h2>
+      <p class="section-lede">Every question takes the same path. The work itself takes around 10 milliseconds, because it is ordinary code and SQL.</p>
+      <ol class="flow">
+        <li class="flow-step"><h3>Check the question</h3><p>Plain text, 1 to 500 characters, with a request ID for the logs.</p></li>
+        <li class="flow-step"><h3>Look up the data</h3><p>Which months, products, regions and categories exist.</p></li>
+        <li class="flow-step"><h3>Plan</h3><p>Pick a tool and its arguments, or decide to ask or decline.</p></li>
+        <li class="flow-step"><h3>Validate</h3><p>Arguments must match strict schemas: real months, known dimensions, limits.</p></li>
+        <li class="flow-step"><h3>Query</h3><p>Fixed, parameterized SQL on a read-only database connection.</p></li>
+        <li class="flow-step"><h3>Write</h3><p>The answer quotes numbers from the query results, never calculates them.</p></li>
+        <li class="flow-step is-check"><h3>Verify</h3><p>Every number in the answer must exactly match a query result.</p></li>
+      </ol>
+      <div class="flow-exits">
+        <p class="exit exit-clarify"><strong>Ask for a detail</strong>An unknown name like "Europe", or a vague period like "last month", gets a clarifying question.</p>
+        <p class="exit exit-decline"><strong>Decline</strong>Profit, forecasts, unrelated requests and commands like "delete" are refused before any query runs.</p>
+        <p class="exit exit-withhold"><strong>Withhold</strong>If any number fails verification, no answer is shown at all.</p>
+      </div>
+    </section>
+
+    <section class="wrap section" aria-labelledby="layers-title">
+      <h2 class="section-title" id="layers-title">Five layers of protection</h2>
+      <p class="section-lede">Each layer works on its own, so one layer's mistake doesn't become a wrong answer or a changed database.</p>
+      <ul class="layers">
+        <li class="layer">
+          <h3>Fixed tools with validated arguments</h3>
+          <p>The planner can only name one of six tools. Unknown fields, wrong types and invalid months are rejected before anything runs.</p>
+        </li>
+        <li class="layer">
+          <h3>Parameterized, read-only SQL</h3>
+          <p>Queries are written in advance with placeholders for values, and the database connection is opened read-only, so nothing can change the data.</p>
+        </li>
+        <li class="layer">
+          <h3>Limits on every question</h3>
+          <p>At most 4 tool calls, 6 planning steps and 10 seconds. Each query also has its own time budget and is stopped if it runs over.</p>
+        </li>
+        <li class="layer">
+          <h3>A grounding check on every answer</h3>
+          <p>Amounts and percentages must exactly match a value from that question's query results. No rounding, no "close enough".</p>
+        </li>
+        <li class="layer">
+          <h3>Ask instead of guess</h3>
+          <p>When the planner isn't sure what's being asked, it asks a question rather than picking an answer that looks plausible.</p>
+        </li>
+      </ul>
+    </section>
+
+    <section class="wrap section" aria-labelledby="eval-title">
+      <h2 class="section-title" id="eval-title">How well it works</h2>
+      <p class="section-lede">Questions were tested against expected tools, arguments and numbers. Held-out questions were written separately and committed to git before their first run, so they couldn't be tuned to the results.</p>
+      <div class="results-table">
+        <div class="ledger-scroll" tabindex="0" role="region" aria-label="Evaluation results">
+          <table class="ledger">
+            <thead>
+              <tr>
+                <th scope="col">Stage</th>
+                <th scope="col">Questions</th>
+                <th scope="col">Answered correctly</th>
+                <th scope="col">Confident wrong answers</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">First version</th><td>10 held-out, unseen</td><td>3 of 10</td><td>2</td></tr>
+              <tr><th scope="row">After generalizing the rules</th><td>10 new held-out, unseen</td><td>7 of 10</td><td>1</td></tr>
+              <tr><th scope="row">After a second round of fixes</th><td>71, all seen before</td><td>71 of 71</td><td>0</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="prose">
+        <p>The honest figure is 7 of 10: the last time the planner met questions it had never seen. The 71 of 71 includes questions that were studied while fixing failures, so it shows the fixes work, not how well it handles new wording.</p>
+        <p>A confident wrong answer is the dangerous kind: a verified, real number that answers a different question. A clarifying question or a refusal is a safe failure; these are not.</p>
+        <p><a href="https://github.com/erprakash26/groundedbi/blob/main/evals/results/latest.md">Read the full evaluation report</a></p>
+      </div>
+    </section>
+
+    <section class="wrap section" aria-labelledby="limits-title">
+      <h2 class="section-title" id="limits-title">Limitations</h2>
+      <div class="prose">
+        <ul>
+          <li>The planner is rule-based. It understands the phrasings it has rules for; unusual wording gets a clarifying question instead of an answer.</li>
+          <li>The grounding check verifies numbers, not words. Words like "rose" and "fell" are chosen in code from the sign of the change, and that rule is tested separately.</li>
+          <li>Amounts are shown in whole dollars, so rows may not add up exactly to a total. The exact cents are kept in the data.</li>
+          <li>The data is synthetic: an invented electronics retailer from January to June 2026, with patterns planted on purpose.</li>
+          <li>It hasn't been run with a large language model. The planner sits behind an interface that one could plug into.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="wrap section" aria-labelledby="stack-title">
+      <h2 class="section-title" id="stack-title">Built with</h2>
+      <ul class="stack">
+        <li>Python</li>
+        <li>FastAPI</li>
+        <li>Pydantic</li>
+        <li>SQLite</li>
+        <li>pytest</li>
+        <li>HTML, CSS and JavaScript, no frameworks</li>
+      </ul>
+      <p class="section-lede stack-cta"><a class="button-link" href="/">Try a question</a></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="GroundedBI home">
+          <img class="brand-mark" src="/static/logo-mark.svg" alt="" width="28" height="28">
+          <span class="brand-name">GroundedBI</span>
+        </a>
+        <p>A portfolio project by Prakash Bhandari. Questions are planned by a deterministic rule-based planner, not a language model, and the data is synthetic.</p>
+      </div>
+      <nav class="footer-links" aria-label="Site">
+        <p class="footer-title">Site</p>
+        <a href="/">Ask a question</a>
+        <a href="/explore">Explore the data</a>
+        <a href="/how-it-works">How it works</a>
+      </nav>
+      <nav class="footer-links" aria-label="Project">
+        <p class="footer-title">Project</p>
+        <a href="https://github.com/erprakash26/groundedbi">Source code</a>
+        <a href="https://github.com/erprakash26/groundedbi/blob/main/evals/results/latest.md">Evaluation report</a>
+        <a href="/docs">API documentation</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>
